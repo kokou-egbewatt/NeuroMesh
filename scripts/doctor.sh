@@ -25,9 +25,20 @@ fi
 
 echo "Go"
 if command -v go >/dev/null; then
-  want="$(grep -m1 '^go ' go.work | awk '{print $2}')"
-  have="$(go env GOVERSION | sed 's/^go//')"
-  if version_ge "$have" "$want"; then ok "go $have (go.work wants $want)"; else fail "go $have is older than $want from go.work"; fi
+  # go.work's go line is the minimum an installed Go (and gopls) needs; its
+  # toolchain line is the Go that builds, which the go command downloads itself.
+  min="$(grep -m1 '^go ' go.work | awk '{print $2}')"
+  toolchain="$(grep -m1 '^toolchain go' go.work | sed 's/^toolchain go//')"
+  installed="$(GOTOOLCHAIN=local go env GOVERSION | sed 's/^go//')"
+  building="$(go env GOVERSION | sed 's/^go//')"
+  if version_ge "$installed" "$min"; then ok "installed go $installed (gopls needs $min or newer)"; else fail "installed go $installed is older than $min from go.work: gopls cannot load the workspace"; fi
+  if [[ "$(go env GOTOOLCHAIN)" == local* && "$building" != "$toolchain" ]]; then
+    warn "GOTOOLCHAIN=local keeps the build on go $building; go.work pins go$toolchain"
+  elif [[ "$building" == "$toolchain" ]]; then
+    ok "builds with go $building (go.work toolchain)"
+  else
+    warn "builds with go $building, go.work pins go$toolchain"
+  fi
   gobin="$(go env GOBIN)"
   [[ -z "$gobin" ]] && gobin="$(go env GOPATH)/bin"
   if command -v protoc-gen-go >/dev/null || command -v task >/dev/null; then

@@ -13,7 +13,7 @@ date="$(echo "$heading" | sed -E 's/^.*\(([0-9-]+)\)$/\1/')"
 
 sha="$(git rev-parse --short HEAD)"
 ref="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-$(git rev-parse --abbrev-ref HEAD)}}"
-go_version="$(grep -m1 '^go ' go.work | awk '{print $2}')"
+go_version="$(grep -m1 '^toolchain go' go.work | sed 's/^toolchain go//')"
 
 # A default checkout has no origin/main; one shallow ref is enough to compare.
 git rev-parse --verify --quiet origin/main >/dev/null || git fetch --quiet --depth=1 origin main:refs/remotes/origin/main 2>/dev/null || true

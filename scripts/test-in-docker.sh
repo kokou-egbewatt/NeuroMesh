@@ -5,7 +5,9 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-go_version="$(grep -m1 '^go ' go.work | awk '{print $2}')"
+# The toolchain line is the Go that builds the repository (the go line is only
+# the minimum language version).
+go_version="$(grep -m1 '^toolchain go' go.work | sed 's/^toolchain go//')"
 src="$(pwd)"
 # Docker Desktop on Windows needs C:/..., not Git Bash's /c/...
 if pwd -W >/dev/null 2>&1; then src="$(pwd -W)"; fi

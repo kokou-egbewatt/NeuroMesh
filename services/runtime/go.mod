@@ -1,6 +1,6 @@
 module github.com/kokou-egbewatt/NeuroMesh/services/runtime
 
-go 1.26.8
+go 1.26.3
 
 replace (
 	github.com/kokou-egbewatt/NeuroMesh/packages/config => ../../packages/config
