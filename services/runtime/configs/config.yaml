@@ -1,0 +1,14 @@
+# Local run from services/runtime (`task runtime:run`). Certificates come from
+# `task certs:dev`; on a cluster, cert-manager mounts the same three files from
+# a Secret (see config.container.yaml).
+addr: ":50051"
+log_level: info
+shutdown_timeout: 10s
+# Must stay above the gateway's limits.max_body_bytes.
+max_recv_msg_bytes: 8388608
+reflection: false
+tls:
+  cert_file: ../../certs/dev/runtime/tls.crt
+  key_file: ../../certs/dev/runtime/tls.key
+  ca_file: ../../certs/dev/runtime/ca.crt
+  allowed_client_names: [gateway]

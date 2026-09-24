@@ -1,0 +1,41 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - govet
+    - staticcheck
+    - unused
+    - errcheck
+    - ineffassign
+    - gocritic
+    - forbidigo
+    - bodyclose
+    - errorlint
+    - misspell
+    - noctx
+  settings:
+    forbidigo:
+      forbid:
+        # Services log through log/slog (packages/logging). The stdlib logger
+        # writes unstructured lines nothing downstream can parse.
+        - pattern: ^log\.(Print|Printf|Println|Fatal|Fatalf|Fatalln|Panic|Panicf|Panicln)$
+          msg: use log/slog through packages/logging
+        - pattern: ^fmt\.Print(f|ln)?$
+          msg: services log through log/slog; only command-line tools print
+  exclusions:
+    rules:
+      # tools/ are command-line programs whose output is for a person.
+      - path: ^tools/
+        linters: [forbidigo]
+      # Tests build requests and listeners inline; the context rule is for
+      # code that serves traffic.
+      - path: _test\.go$
+        linters: [noctx]
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+run:
+  timeout: 5m

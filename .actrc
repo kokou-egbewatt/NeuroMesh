@@ -1,0 +1,4 @@
+-P ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest
+--eventpath .act/event.json
+--env-file .act/env.env
+--use-new-action-cache

@@ -1,0 +1,13 @@
+go 1.26.3
+
+use (
+	./packages/config
+	./packages/logging
+	./packages/middleware
+	./packages/utils
+	./sdk/go
+	./services/gateway
+	./services/runtime
+	./test/integration
+	./tools/certs
+)

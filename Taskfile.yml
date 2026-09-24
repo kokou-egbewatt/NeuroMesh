@@ -1,0 +1,158 @@
+version: "3"
+
+# Every CI job is `task ci:<job>`, so GitHub-hosted runners, act and a terminal
+# run the same commands. Scripts live in ci/scripts and run under bash: on
+# Windows, run task from Git Bash (PowerShell may resolve `bash` to WSL).
+
+includes:
+  runtime:
+    taskfile: ./services/runtime/Taskfile.yml
+    dir: ./services/runtime
+  gateway:
+    taskfile: ./services/gateway/Taskfile.yml
+    dir: ./services/gateway
+
+tasks:
+  default:
+    cmds:
+      - task --list
+
+  # ---------------------------------------------------------------- tools
+  tools:install:
+    desc: Install the pinned toolchain (task, buf, protoc plugins, golangci-lint)
+    cmds:
+      - bash scripts/install-tools.sh
+
+  # ---------------------------------------------------------------- certs
+  certs:dev:
+    desc: Mint a throwaway CA and per-service certificates into certs/dev for runs outside a cluster
+    cmds:
+      - go run ./tools/certs -out certs/dev {{.CLI_ARGS}}
+    status:
+      - test -f certs/dev/ca.crt
+
+  # ---------------------------------------------------------------- proto
+  proto:gen:
+    desc: Generate sdk/go/gen from proto/ with the pinned plugins (output is committed)
+    cmds:
+      - buf generate
+
+  proto:lint:
+    desc: Lint proto/ with buf
+    cmds:
+      - buf lint
+
+  proto:check:
+    desc: buf lint, and fail if sdk/go/gen differs from what proto/ generates
+    cmds:
+      - bash ci/scripts/proto-check.sh
+
+  proto:breaking:
+    desc: Fail on a breaking proto change against origin/main
+    cmds:
+      - bash ci/scripts/proto-breaking.sh
+
+  # ---------------------------------------------------------------- go
+  deps:check:
+    desc: Fail if any module is untidy, cannot build alone, or disagrees on shared versions
+    cmds:
+      - bash ci/scripts/deps-check.sh
+
+  deps:tidy:
+    desc: go work sync plus go mod tidy in every module
+    cmds:
+      - bash ci/scripts/deps-check.sh --fix
+
+  go:build:
+    desc: Build every workspace module
+    cmds:
+      - bash ci/scripts/go-workspace.sh build
+
+  go:vet:
+    desc: Vet every workspace module
+    cmds:
+      - bash ci/scripts/go-workspace.sh vet
+
+  go:lint:
+    desc: golangci-lint every workspace module
+    cmds:
+      - bash ci/scripts/go-workspace.sh lint
+
+  go:test:
+    desc: Test every workspace module (race detector where cgo exists, coverage to coverage.out)
+    cmds:
+      - bash ci/scripts/go-workspace.sh test
+
+  # ---------------------------------------------------------------- images
+  images:build:
+    desc: Build the runtime and gateway images (tag from IMAGE_TAG, default local)
+    vars:
+      TAG: '{{.IMAGE_TAG | default "local"}}'
+    cmds:
+      - docker build -f services/runtime/Dockerfile -t neuromesh-runtime:{{.TAG}} .
+      - docker build -f services/gateway/Dockerfile -t neuromesh-gateway:{{.TAG}} .
+
+  images:smoke:
+    desc: Run both images with dev certificates and serve /v1/route over HTTPS
+    cmds:
+      - bash ci/scripts/images-smoke.sh
+
+  # ---------------------------------------------------------------- docs
+  ci:docs-links:
+    desc: Every relative link in tracked Markdown resolves inside the repository
+    cmds:
+      - bash ci/scripts/check-doc-links.sh
+
+  ci:changelog:
+    desc: CHANGELOG.md has no duplicate, misordered or skipped versions and matches package.json
+    cmds:
+      - bash ci/scripts/changelog-integrity.sh
+
+  ci:version-gate:
+    desc: Code changes against origin/main carry a new CHANGELOG.md version
+    cmds:
+      - bash ci/scripts/version-gate.sh
+
+  # ---------------------------------------------------------------- ci
+  ci:docs:
+    desc: CI job docs (links, changelog, version gate)
+    cmds:
+      - task: ci:docs-links
+      - task: ci:changelog
+      - task: ci:version-gate
+
+  ci:go:
+    desc: CI job go (deps, build, vet, lint, test)
+    cmds:
+      - task: deps:check
+      - task: go:build
+      - task: go:vet
+      - task: go:lint
+      - task: go:test
+
+  ci:proto:
+    desc: CI job proto (lint, generated code drift, breaking changes)
+    cmds:
+      - task: proto:check
+      - task: proto:breaking
+
+  ci:web:
+    desc: CI job web (pnpm workspace install from the lockfile, lint)
+    cmds:
+      - pnpm install --frozen-lockfile
+      - pnpm -r lint
+
+  ci:images:
+    desc: CI job images (build both, then run them)
+    cmds:
+      - task: images:build
+      - task: images:smoke
+
+  ci:
+    desc: Every CI job, in the order the workflows run them
+    cmds:
+      - task: ci:docs
+      - task: ci:proto
+      - task: ci:go
+      - task: ci:web
+      - task: ci:images

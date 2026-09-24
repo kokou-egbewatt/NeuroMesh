@@ -1,0 +1,58 @@
+name: CI
+
+# Thin wrappers over Taskfile targets: a job here runs exactly what
+# `task ci:<job>` runs in a terminal or under act.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go (deps, build, vet, lint, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          tools: task golangci-lint
+      - run: task ci:go
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [ -f coverage.out ]; then
+            echo "### Go coverage" >> "$GITHUB_STEP_SUMMARY"
+            go tool cover -func=coverage.out | tail -1 >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  proto:
+    name: Proto (lint, generated code, breaking changes)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+        with:
+          tools: task buf protoc-gen-go protoc-gen-go-grpc
+      - run: task ci:proto
+
+  web:
+    name: Web (pnpm workspace)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - uses: ./.github/actions/setup
+      - run: task ci:web

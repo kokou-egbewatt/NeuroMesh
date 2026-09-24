@@ -1,0 +1,11 @@
+{
+  "name": "@neuromesh/dashboard",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Operational UI: GPU monitoring, traces, latency, sessions, eval dashboards, topology visualization.",
+  "scripts": {
+    "dev": "echo \"TODO: scaffold the Next.js app (#87)\" && exit 0",
+    "build": "echo \"TODO: scaffold the Next.js app (#87)\" && exit 0",
+    "lint": "echo \"TODO: scaffold the Next.js app (#87)\" && exit 0"
+  }
+}

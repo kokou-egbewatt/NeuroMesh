@@ -1,0 +1,11 @@
+{
+  "name": "neuromesh",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AI Runtime Operating System for Realtime & Distributed GenAI",
+  "license": "MIT",
+  "packageManager": "pnpm@11.3.0",
+  "engines": {
+    "node": ">=20"
+  }
+}

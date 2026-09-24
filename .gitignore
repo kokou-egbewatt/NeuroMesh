@@ -1,0 +1,45 @@
+# Go
+bin/
+*.exe
+*.test
+*.out
+vendor/
+
+# Node / TypeScript
+node_modules/
+dist/
+.next/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Rust
+target/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Build / generated
+# sdk/go/gen is committed on purpose; `task proto:check` fails on drift.
+coverage.out
+
+# Local TLS material from `task certs:dev`. On a cluster, cert-manager issues it.
+certs/
+
+# act: secrets never leave the machine; env.env is committed empty on purpose.
+.act/secrets.env
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

@@ -1,0 +1,27 @@
+name: Docs
+
+# Markdown links, changelog integrity, and the version gate. Runs on every PR,
+# including documentation-only ones: a broken link is a documentation change.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    name: Links, changelog, version gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The version gate compares against origin/main.
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - run: task ci:docs
