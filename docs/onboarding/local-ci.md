@@ -19,7 +19,7 @@ On Windows, run `task` and the scripts from Git Bash. PowerShell may resolve `ba
 | --- | --- | --- | --- |
 | `ci.yml` | go | `task ci:go`: deps check, build, vet, golangci-lint, tests with `-race` and coverage | Go |
 | `ci.yml` | proto | `task ci:proto`: buf lint, generated code drift, breaking changes against `origin/main` | Go, full history |
-| `ci.yml` | web | `task ci:web`: `pnpm install --frozen-lockfile`, `pnpm -r lint` | Node 20, pnpm |
+| `ci.yml` | web | `task ci:web`: `pnpm install --frozen-lockfile`, `pnpm -r lint` | Node 22.13+, pnpm 11 |
 | `docs.yml` | docs | `task ci:docs`: Markdown links, changelog integrity, version gate | full history |
 | `images.yml` | images | `task ci:images`: build both images, run them, serve `/v1/route` over HTTPS | Docker |
 
@@ -62,7 +62,7 @@ task ci:docs-links # one gate
 ## Troubleshooting
 
 - **`origin/main does not exist`**: run `git fetch origin main`. The docs and proto jobs compare against it.
-- **`$'\r': command not found`**: an old checkout with CRLF scripts. Refresh it with `git rm --cached -r -q . && git reset --hard`.
+- **`$'\r': command not found` or `set: pipefail: invalid option name`**: a script has CRLF line endings on disk. act copies the working tree, not the commit, so a file an editor or tool saved with CRLF breaks the run even when the committed file is LF. Find them with `git ls-files -z | xargs -0 file | grep CRLF` and fix each with `sed -i 's/\r$//' <file>`. A stale checkout can be refreshed with `git rm --cached -r -q . && git reset --hard`.
 - **`Permission denied` on an action script**: delete `%USERPROFILE%\.cache\act` so stale action copies are refetched with their modes.
 - **`race detector unavailable`** locally on Windows: there is no gcc, so tests run without `-race`. CI always has it and fails if it does not.
 - **Act Visual Runner mangles Windows paths**: neuvia-infra carries the patch (`make fix-act-runner` there); the terminal commands above are unaffected.

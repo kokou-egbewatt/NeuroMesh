@@ -56,7 +56,7 @@ It is built in seven phases, each a GitHub milestone:
 
 ## Getting Started
 
-Prerequisites: Go 1.26+, Node 20+, [pnpm](https://pnpm.io), [go-task](https://taskfile.dev), Docker. On Windows, run `task` from Git Bash.
+Prerequisites: Go 1.26+, Node 22.13+, [pnpm](https://pnpm.io), [go-task](https://taskfile.dev), Docker. On Windows, run `task` from Git Bash.
 
 ```sh
 task tools:install    # pinned buf, protoc plugins, golangci-lint, task
