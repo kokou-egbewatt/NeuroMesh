@@ -72,6 +72,7 @@ The full loop (debugging, tests, hooks, releases) is in [Dev loop](docs/onboardi
 ## 📚 Documentation
 
 - 📐 [Architecture Overview](docs/architecture/overview.md): phase roadmap, service responsibility map, local substrate
+- 🧰 [How the tooling works](docs/onboarding/tooling.md): the layers, version sources, every script, and how to add things
 - 🔁 [Dev loop](docs/onboarding/dev-loop.md): live reload, calling the stack, debugging, tests, hooks, releases
 - 🧪 [Local CI](docs/onboarding/local-ci.md): running the workflows with act, and each gate on its own
 - 🧾 [ADRs](docs/adr/) and [RFCs](docs/rfc/): every decision, with the alternatives that lost

@@ -1,6 +1,6 @@
 # Dev loop
 
-Everything here runs locally. On Windows, run `task` from Git Bash.
+Everything here runs locally. On Windows, run `task` from Git Bash. How the pieces fit together is in [How the tooling works](tooling.md).
 
 ## First time
 
