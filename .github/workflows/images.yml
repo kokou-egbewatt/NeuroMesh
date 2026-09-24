@@ -20,11 +20,11 @@ concurrency:
 jobs:
   images:
     name: Build and smoke-test images
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       IMAGE_TAG: ci
       DOCKER_BUILDKIT: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - run: task ci:images

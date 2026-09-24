@@ -17,9 +17,9 @@ concurrency:
 jobs:
   docs:
     name: Links, changelog, version gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The version gate compares against origin/main.
           fetch-depth: 0

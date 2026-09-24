@@ -44,7 +44,7 @@ task ci:docs-links # one gate
 
 ## How the repository is set up for act
 
-- `.actrc` pins the runner image (`ghcr.io/catthehacker/ubuntu:act-latest`), the event file, and the env file, and enables `--use-new-action-cache` so executable bits survive the copy from a Windows checkout.
+- `.actrc` maps the pinned `ubuntu-24.04` runner to `ghcr.io/catthehacker/ubuntu:act-24.04` (and `ubuntu-latest` to `act-latest`), and sets the event file, and the env file, and enables `--use-new-action-cache` so executable bits survive the copy from a Windows checkout.
 - `.act/event.json` is the pull request payload with base `main`. It pins no head ref, so a run gates the branch you have checked out.
 - `.act/env.env` is empty on purpose. act otherwise reads `.env` from the repository root and injects it into the job, and GitHub has no `.env`; anything a job needs comes from the workflow itself.
 - `.act/secrets.env` is gitignored. No job needs a secret today.

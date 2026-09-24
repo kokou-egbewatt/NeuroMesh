@@ -47,6 +47,9 @@ run to find out that a file had CRLF line endings.** This release is the daily l
 
 - Test output prints each package's share of the workspace and one merged coverage total,
   instead of repeating the full package list per line.
+- **Actions run on Node 24** (checkout v7, setup-go v7, setup-node v7, pnpm/action-setup v6), and
+  jobs are pinned to `ubuntu-24.04`, so the `ubuntu-latest` move to Ubuntu 26 on 2026-10-19 lands as
+  a deliberate change rather than a silent one.
 
 ## [0.1.0] - The Phase 1 Scaffold (2026-09-24)
 
