@@ -27,4 +27,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
+      - name: Version
+        run: task ci:summary
       - run: task ci:images

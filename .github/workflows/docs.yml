@@ -24,4 +24,6 @@ jobs:
           # The version gate compares against origin/main.
           fetch-depth: 0
       - uses: ./.github/actions/setup
+      - name: Version
+        run: task ci:summary
       - run: task ci:docs

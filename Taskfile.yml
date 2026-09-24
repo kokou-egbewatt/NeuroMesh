@@ -219,6 +219,11 @@ tasks:
     cmds:
       - bash scripts/release-next.sh {{.CLI_ARGS}}
 
+  ci:summary:
+    desc: Version, release title and commit this run builds (to the GitHub job summary in CI)
+    cmds:
+      - bash ci/scripts/version-summary.sh
+
   ci:line-endings:
     desc: No tracked file has CRLF line endings (act copies the working tree)
     cmds:

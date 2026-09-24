@@ -38,6 +38,9 @@ run to find out that a file had CRLF line endings.** This release is the daily l
 - **`task adr:new` and `rfc:new`** create the next numbered ADR or RFC in the house format.
 - **Shared VS Code config**: recommended extensions, launch configs for both services and the
   current test package, and a compound that starts both.
+- **The version on every run.** `task ci:summary` writes the version, its release title, whether
+  main has released it, the commit and the Go version to the top of the GitHub job summary, once
+  per workflow.
 - **gofumpt and goimports** through golangci-lint, with `task go:fmt`.
 - **`-config` flag and `log_format`** on both services. Relative paths in a config resolve
   against the config file's directory, so a service runs from any working directory. Local
