@@ -33,6 +33,8 @@ broken=0
 checked=0
 files=0
 while IFS= read -r doc; do
+  # Tracked but deleted in the working tree: it is leaving, nothing to check.
+  [[ -f "$doc" ]] || continue
   files=$((files + 1))
   dir="$(dirname "$doc")"
   while IFS= read -r target; do
