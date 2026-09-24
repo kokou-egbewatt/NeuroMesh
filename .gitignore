@@ -28,6 +28,10 @@ target/
 # Build / generated
 # sdk/go/gen is committed on purpose; `task proto:check` fails on drift.
 coverage.out
+coverage.html
+
+# air live-reload builds (`task dev`)
+/tmp/
 
 # Local TLS material from `task certs:dev`. On a cluster, cert-manager issues it.
 /certs/
@@ -35,8 +39,11 @@ coverage.out
 # act: secrets never leave the machine; env.env is committed empty on purpose.
 .act/secrets.env
 
-# IDE / OS
-.vscode/
+# IDE / OS: shared VS Code config is committed, personal settings are not
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
 .idea/
 .DS_Store
 Thumbs.db

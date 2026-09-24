@@ -2,6 +2,7 @@
 # (tls.crt, tls.key, ca.crt); `task images:smoke` copies dev certificates there.
 addr: ":50051"
 log_level: info
+log_format: json
 shutdown_timeout: 10s
 max_recv_msg_bytes: 8388608
 reflection: false

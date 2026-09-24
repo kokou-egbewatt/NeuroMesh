@@ -20,7 +20,7 @@ On Windows, run `task` and the scripts from Git Bash. PowerShell may resolve `ba
 | `ci.yml` | go | `task ci:go`: deps check, build, vet, golangci-lint, tests with `-race` and coverage | Go |
 | `ci.yml` | proto | `task ci:proto`: buf lint, generated code drift, breaking changes against `origin/main` | Go, full history |
 | `ci.yml` | web | `task ci:web`: `pnpm install --frozen-lockfile`, `pnpm -r lint` | Node 22.13+, pnpm 11 |
-| `docs.yml` | docs | `task ci:docs`: Markdown links, changelog integrity, version gate | full history |
+| `docs.yml` | docs | `task ci:docs`: line endings, Markdown links, changelog integrity, version gate | full history |
 | `images.yml` | images | `task ci:images`: build both images, run them, serve `/v1/route` over HTTPS | Docker |
 
 ## Running
@@ -53,6 +53,7 @@ task ci:docs-links # one gate
 
 ## The gates
 
+- **Line endings** (`task ci:line-endings`): no tracked file has CRLF on disk. act copies the working tree, so a CRLF script breaks it even when the commit is clean.
 - **Links** (`task ci:docs-links`): every relative link in a Markdown file git tracks or would track resolves to an existing path, and none climbs out of the repository. External links are not checked.
 - **Changelog** (`task ci:changelog`): `[Unreleased]` comes first, release headings read `## [x.y.z] - Title (YYYY-MM-DD)`, versions are unique, descending and gap-free, no title heads two blocks, and `package.json` declares the newest version.
 - **Version gate** (`task ci:version-gate`): a change under `apps`, `services`, `packages`, `sdk`, `proto`, `infra`, `deployments`, `tools`, `test`, `ci`, `scripts` or `.github` (Markdown excluded) against `origin/main` adds a new changelog version. It compares the working tree, untracked files included, so it gates a change before it is committed.

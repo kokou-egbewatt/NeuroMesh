@@ -23,6 +23,7 @@ import (
 type Config struct {
 	Addr            string         `yaml:"addr"`
 	LogLevel        string         `yaml:"log_level"`
+	LogFormat       string         `yaml:"log_format"`
 	ShutdownTimeout time.Duration  `yaml:"shutdown_timeout"`
 	TLS             config.TLS     `yaml:"tls"`
 	HTTP            HTTPConfig     `yaml:"http"`

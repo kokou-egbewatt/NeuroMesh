@@ -1,12 +1,16 @@
-# Local run from services/gateway (`task gateway:run`). Certificates come from
+# Local run (`task dev`, `task gateway:run`). Relative paths resolve against this
+# file's directory, so the service runs from any working directory.
+# Certificates come from
 # `task certs:dev`; on a cluster, cert-manager mounts the same files from a
 # Secret (see config.container.yaml).
 addr: ":8443"
 log_level: info
+# Readable in a terminal. Anything the collector reads stays json.
+log_format: text
 shutdown_timeout: 10s
 tls:
-  cert_file: ../../certs/dev/gateway/tls.crt
-  key_file: ../../certs/dev/gateway/tls.key
+  cert_file: ../../../certs/dev/gateway/tls.crt
+  key_file: ../../../certs/dev/gateway/tls.key
 http:
   read_header_timeout: 5s
   read_timeout: 30s
@@ -21,6 +25,6 @@ runtime:
   addr: localhost:50051
   server_name: runtime
   tls:
-    cert_file: ../../certs/dev/gateway/tls.crt
-    key_file: ../../certs/dev/gateway/tls.key
-    ca_file: ../../certs/dev/gateway/ca.crt
+    cert_file: ../../../certs/dev/gateway/tls.crt
+    key_file: ../../../certs/dev/gateway/tls.key
+    ca_file: ../../../certs/dev/gateway/ca.crt

@@ -22,7 +22,7 @@ func TestParseLevel(t *testing.T) {
 
 func TestNewWritesOneJSONRecordPerLine(t *testing.T) {
 	var buf bytes.Buffer
-	log, err := New(&buf, "gateway", "info")
+	log, err := New(&buf, "gateway", "info", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,5 +38,20 @@ func TestNewWritesOneJSONRecordPerLine(t *testing.T) {
 	}
 	if rec["service"] != "gateway" || rec["msg"] != "request served" {
 		t.Fatalf("unexpected record: %v", rec)
+	}
+}
+
+func TestTextFormatAndUnknownFormat(t *testing.T) {
+	var buf bytes.Buffer
+	log, err := New(&buf, "runtime", "info", "text")
+	if err != nil {
+		t.Fatal(err)
+	}
+	log.Info("ready", "addr", ":50051")
+	if got := buf.String(); !bytes.Contains([]byte(got), []byte("msg=ready")) || !bytes.Contains([]byte(got), []byte("service=runtime")) {
+		t.Fatalf("text output: %q", got)
+	}
+	if _, err := New(&buf, "x", "info", "xml"); err == nil {
+		t.Fatal("an unknown format must fail")
 	}
 }

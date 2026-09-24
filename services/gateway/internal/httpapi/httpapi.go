@@ -19,8 +19,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/kokou-egbewatt/NeuroMesh/services/gateway/internal/router"
 	neuromeshv1 "github.com/kokou-egbewatt/NeuroMesh/sdk/go/gen/neuromesh/v1"
+	"github.com/kokou-egbewatt/NeuroMesh/services/gateway/internal/router"
 )
 
 // Limits bounds what the edge accepts. Zero values mean the defaults, never

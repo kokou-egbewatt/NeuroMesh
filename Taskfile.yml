@@ -1,8 +1,9 @@
 version: "3"
 
 # Every CI job is `task ci:<job>`, so GitHub-hosted runners, act and a terminal
-# run the same commands. Scripts live in ci/scripts and run under bash: on
-# Windows, run task from Git Bash (PowerShell may resolve `bash` to WSL).
+# run the same commands. Scripts live in ci/scripts and scripts/ and run under
+# bash: on Windows, run task from Git Bash (PowerShell may resolve `bash` to WSL).
+# `task doctor` checks a machine; `task --list` shows everything.
 
 includes:
   runtime:
@@ -12,16 +13,81 @@ includes:
     taskfile: ./services/gateway/Taskfile.yml
     dir: ./services/gateway
 
+vars:
+  ROUTE_BODY: '{"model":"llama3","prompt":"hello there world"}'
+
 tasks:
   default:
     cmds:
       - task --list
 
-  # ---------------------------------------------------------------- tools
+  # ---------------------------------------------------------------- setup
   tools:install:
-    desc: Install the pinned toolchain (task, buf, protoc plugins, golangci-lint)
+    desc: Install the pinned toolchain (task, buf, protoc plugins, golangci-lint, air, lefthook)
     cmds:
       - bash scripts/install-tools.sh
+
+  doctor:
+    desc: Check this machine can run every task, and say what to fix
+    cmds:
+      - bash scripts/doctor.sh
+
+  hooks:install:
+    desc: Install the git hooks from lefthook.yml (fast gates before commit and push)
+    cmds:
+      - lefthook install
+
+  # ---------------------------------------------------------------- dev loop
+  dev:
+    desc: Run runtime and gateway with live reload over TLS (mints certificates on first run)
+    deps: [certs:dev]
+    cmds:
+      - task --output=prefixed dev:all
+
+  # No desc, so it stays out of task --list; task dev calls it with prefixed output.
+  dev:all:
+    deps: [dev:runtime, dev:gateway]
+
+  dev:runtime:
+    internal: true
+    prefix: runtime
+    cmds:
+      - air -c services/runtime/.air.toml
+
+  dev:gateway:
+    internal: true
+    prefix: gateway
+    cmds:
+      - air -c services/gateway/.air.toml
+
+  call:route:
+    desc: "POST /v1/route to the local gateway over HTTPS (custom body: task call:route -- '<json>')"
+    vars:
+      # CLI_ARGS arrives shell-quoted from task; the default is quoted here.
+      BODY: "{{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}'{{.ROUTE_BODY}}'{{end}}"
+    cmds:
+      - >-
+        curl --silent --show-error --ssl-no-revoke --cacert certs/dev/ca.crt
+        -H 'Content-Type: application/json' -d {{.BODY}}
+        https://localhost:8443/v1/route
+      - echo
+
+  call:health:
+    desc: GET /healthz on the local gateway over HTTPS
+    cmds:
+      - curl --silent --show-error --ssl-no-revoke --cacert certs/dev/ca.crt https://localhost:8443/healthz
+      - echo
+
+  call:runtime:
+    desc: "Call the runtime's Route directly over mutual TLS with buf curl, presenting the gateway certificate"
+    vars:
+      # CLI_ARGS arrives shell-quoted from task; the default is quoted here.
+      BODY: "{{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}'{{.ROUTE_BODY}}'{{end}}"
+    cmds:
+      - >-
+        buf curl --schema proto --protocol grpc
+        --cacert certs/dev/gateway/ca.crt --cert certs/dev/gateway/tls.crt --key certs/dev/gateway/tls.key
+        -d {{.BODY}} https://localhost:50051/neuromesh.v1.InferenceService/Route
 
   # ---------------------------------------------------------------- certs
   certs:dev:
@@ -30,6 +96,18 @@ tasks:
       - go run ./tools/certs -out certs/dev {{.CLI_ARGS}}
     status:
       - test -f certs/dev/ca.crt
+
+  certs:trust:
+    desc: Trust the dev CA for this Windows user so browsers and curl accept https://localhost:8443
+    platforms: [windows]
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-trust-ca.ps1
+
+  certs:untrust:
+    desc: Stop trusting the dev CA for this Windows user
+    platforms: [windows]
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-trust-ca.ps1 -Remove
 
   # ---------------------------------------------------------------- proto
   proto:gen:
@@ -74,14 +152,42 @@ tasks:
       - bash ci/scripts/go-workspace.sh vet
 
   go:lint:
-    desc: golangci-lint every workspace module
+    desc: golangci-lint every workspace module (formatting included)
     cmds:
       - bash ci/scripts/go-workspace.sh lint
+
+  go:fmt:
+    desc: Format every Go file (gofumpt, goimports)
+    cmds:
+      - bash ci/scripts/go-workspace.sh fmt
 
   go:test:
     desc: Test every workspace module (race detector where cgo exists, coverage to coverage.out)
     cmds:
-      - bash ci/scripts/go-workspace.sh test
+      - bash ci/scripts/go-workspace.sh test {{.CLI_ARGS}}
+
+  go:test:docker:
+    desc: Test every workspace module in a Linux container with -race, the way CI does
+    cmds:
+      - bash scripts/test-in-docker.sh {{.CLI_ARGS}}
+
+  test:unit:
+    desc: Unit tests only, without test/integration (the fast inner loop)
+    cmds:
+      - bash ci/scripts/go-workspace.sh unit {{.CLI_ARGS}}
+
+  test:golden:
+    desc: Rewrite the integration golden files in test/integration/testdata
+    dir: test/integration
+    cmds:
+      - go test -count=1 . -update
+
+  cover:html:
+    desc: Run the tests and write coverage.html
+    cmds:
+      - task: go:test
+      - go tool cover -html=coverage.out -o coverage.html
+      - echo "wrote coverage.html"
 
   # ---------------------------------------------------------------- images
   images:build:
@@ -98,6 +204,26 @@ tasks:
       - bash ci/scripts/images-smoke.sh
 
   # ---------------------------------------------------------------- docs
+  adr:new:
+    desc: 'Create the next numbered ADR (task adr:new -- "Title")'
+    cmds:
+      - bash scripts/new-doc.sh adr {{.CLI_ARGS}}
+
+  rfc:new:
+    desc: 'Create the next numbered RFC (task rfc:new -- "Title")'
+    cmds:
+      - bash scripts/new-doc.sh rfc {{.CLI_ARGS}}
+
+  release:next:
+    desc: 'Add the next CHANGELOG version and bump package.json (task release:next -- minor "Title")'
+    cmds:
+      - bash scripts/release-next.sh {{.CLI_ARGS}}
+
+  ci:line-endings:
+    desc: No tracked file has CRLF line endings (act copies the working tree)
+    cmds:
+      - bash ci/scripts/check-line-endings.sh
+
   ci:docs-links:
     desc: Every relative link in tracked Markdown resolves inside the repository
     cmds:
@@ -115,8 +241,9 @@ tasks:
 
   # ---------------------------------------------------------------- ci
   ci:docs:
-    desc: CI job docs (links, changelog, version gate)
+    desc: CI job docs (line endings, links, changelog, version gate)
     cmds:
+      - task: ci:line-endings
       - task: ci:docs-links
       - task: ci:changelog
       - task: ci:version-gate

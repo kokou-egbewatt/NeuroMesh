@@ -166,3 +166,13 @@ func TestMissingFilesNameTheFix(t *testing.T) {
 		t.Fatal("ServerConfig must refuse insecure")
 	}
 }
+
+func TestResolveRelative(t *testing.T) {
+	base := filepath.Join("etc", "svc")
+	abs, _ := filepath.Abs("x.crt")
+	c := TLS{CertFile: "../certs/tls.crt", KeyFile: abs, CAFile: ""}
+	c.ResolveRelative(base)
+	if c.CertFile != filepath.Join("etc", "certs", "tls.crt") || c.KeyFile != abs || c.CAFile != "" {
+		t.Fatalf("unexpected: %+v", c)
+	}
+}

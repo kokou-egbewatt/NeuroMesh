@@ -15,8 +15,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/kokou-egbewatt/NeuroMesh/services/gateway/internal/router"
 	neuromeshv1 "github.com/kokou-egbewatt/NeuroMesh/sdk/go/gen/neuromesh/v1"
+	"github.com/kokou-egbewatt/NeuroMesh/services/gateway/internal/router"
 )
 
 // fakeClient records calls and returns a scripted result. No sockets.

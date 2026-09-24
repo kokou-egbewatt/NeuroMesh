@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 )
 
@@ -24,6 +25,17 @@ type TLS struct {
 	// Chain verification alone says the caller holds a certificate from the
 	// platform CA; this says which service it is.
 	AllowedClientNames []string `yaml:"allowed_client_names"`
+}
+
+// ResolveRelative rewrites relative file paths as paths under baseDir, the
+// directory of the config file that named them. A config then means the same
+// thing whatever directory the service is started from.
+func (t *TLS) ResolveRelative(baseDir string) {
+	for _, p := range []*string{&t.CertFile, &t.KeyFile, &t.CAFile} {
+		if *p != "" && !filepath.IsAbs(*p) {
+			*p = filepath.Join(baseDir, *p)
+		}
+	}
 }
 
 // ServerConfig builds the listener side. With requireClientCert, the peer must

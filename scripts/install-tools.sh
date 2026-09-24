@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The one place tool versions are pinned. CI, act, the Taskfile and the
-# Dockerfiles all install through this script, so generated code and lint
+# The one place tool versions are pinned. CI, act and the Taskfile all install
+# through this script, so generated code and lint
 # results do not depend on whose machine ran them.
 #
 #   bash scripts/install-tools.sh            # all tools
@@ -14,8 +14,10 @@ declare -A PINS=(
   [protoc-gen-go]="google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12"
   [protoc-gen-go-grpc]="google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2"
   [golangci-lint]="github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2"
+  [air]="github.com/air-verse/air@v1.67.4"
+  [lefthook]="github.com/evilmartians/lefthook/v2@v2.1.14"
 )
-ORDER=(task buf protoc-gen-go protoc-gen-go-grpc golangci-lint)
+ORDER=(task buf protoc-gen-go protoc-gen-go-grpc golangci-lint air lefthook)
 
 if [[ "${1:-}" == "--versions" ]]; then
   for t in "${ORDER[@]}"; do echo "$t ${PINS[$t]##*@}"; done

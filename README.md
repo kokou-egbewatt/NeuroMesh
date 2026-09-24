@@ -59,18 +59,20 @@ It is built in seven phases, each a GitHub milestone:
 Prerequisites: Go 1.26+, Node 22.13+, [pnpm](https://pnpm.io), [go-task](https://taskfile.dev), Docker. On Windows, run `task` from Git Bash.
 
 ```sh
-task tools:install    # pinned buf, protoc plugins, golangci-lint, task
-task certs:dev        # throwaway CA and per-service certificates in certs/dev
-task runtime:run      # terminal 1: gRPC on :50051, mutual TLS
-task gateway:run      # terminal 2: HTTPS on :8443
-curl --cacert certs/dev/ca.crt https://localhost:8443/v1/route \
-  -H 'Content-Type: application/json' -d '{"model":"llama3","prompt":"hello"}'
+task tools:install    # pinned task, buf, protoc plugins, golangci-lint, air, lefthook
+task doctor           # what this machine is missing
+task hooks:install    # fast gates before commit and push
+task dev              # runtime and gateway with live reload, over TLS
+task call:route       # POST /v1/route through the gateway
 task ci               # every CI job, locally
 ```
+
+The full loop (debugging, tests, hooks, releases) is in [Dev loop](docs/onboarding/dev-loop.md).
 
 ## 📚 Documentation
 
 - 📐 [Architecture Overview](docs/architecture/overview.md): phase roadmap, service responsibility map, local substrate
+- 🔁 [Dev loop](docs/onboarding/dev-loop.md): live reload, calling the stack, debugging, tests, hooks, releases
 - 🧪 [Local CI](docs/onboarding/local-ci.md): running the workflows with act, and each gate on its own
 - 🧾 [ADRs](docs/adr/) and [RFCs](docs/rfc/): every decision, with the alternatives that lost
 - 📝 [Changelog](CHANGELOG.md): release notes and version history

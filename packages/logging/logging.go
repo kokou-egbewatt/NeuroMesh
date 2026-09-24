@@ -1,7 +1,7 @@
-// Package logging builds the slog logger every NeuroMesh service uses: JSON
-// to stdout, one record per line, level from config. Services never write log
-// files and never ship logs themselves; on the cluster the collector agent
-// reads stdout.
+// Package logging builds the slog logger every NeuroMesh service uses: one
+// record per line on stdout, JSON by default, level from config. Services
+// never write log files and never ship logs themselves; on the cluster the
+// collector agent reads stdout.
 package logging
 
 import (
@@ -27,12 +27,23 @@ func ParseLevel(s string) (slog.Level, error) {
 	}
 }
 
-// New returns a JSON logger at level, tagged with the service name.
-func New(w io.Writer, service, level string) (*slog.Logger, error) {
+// New returns a logger at level, tagged with the service name. format is
+// "json" (the default, and the only format outside a laptop: the collector
+// parses it) or "text", which local configs use so a terminal stays readable.
+func New(w io.Writer, service, level, format string) (*slog.Logger, error) {
 	lvl, err := ParseLevel(level)
 	if err != nil {
 		return nil, err
 	}
-	h := slog.NewJSONHandler(w, &slog.HandlerOptions{Level: lvl})
+	opts := &slog.HandlerOptions{Level: lvl}
+	var h slog.Handler
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "", "json":
+		h = slog.NewJSONHandler(w, opts)
+	case "text":
+		h = slog.NewTextHandler(w, opts)
+	default:
+		return nil, fmt.Errorf("logging: unknown format %q (want json or text)", format)
+	}
 	return slog.New(h).With("service", service), nil
 }

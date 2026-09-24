@@ -9,6 +9,45 @@ enforces it and `task ci:changelog` checks the file's structure.
 
 ## [Unreleased]
 
+## [0.2.0] - Local Developer Tooling (2026-09-24)
+
+**The scaffold worked, and using it took two terminals, a curl flag nobody remembered, and a CI
+run to find out that a file had CRLF line endings.** This release is the daily loop.
+
+### Added
+
+- **`task dev`** runs the runtime and the gateway together with live reload (air), prefixed
+  output, and dev certificates minted on first run. A change in a service, a shared package or
+  the SDK is served within seconds.
+- **`task call:route`, `call:health` and `call:runtime`** call the local stack over TLS. The last
+  one calls the runtime directly with `buf curl`, presenting the gateway's certificate, so the
+  runtime is reachable without reflection.
+- **`task certs:trust` and `certs:untrust`** add the dev CA to the current Windows user's trust
+  store, so a browser and plain curl accept `https://localhost:8443`.
+- **`task doctor`** checks Go, the pinned tools, Node and pnpm, Docker, act, certificates, hooks,
+  `origin/main` and line endings, and says what to run for each gap.
+- **`task go:test:docker`** runs the tests in a Linux container with the race detector, for
+  machines without cgo.
+- **`task test:unit`, `test:golden` and `cover:html`** for the fast loop, golden updates and a
+  coverage report.
+- **Git hooks** (`lefthook.yml`, `task hooks:install`): line endings, Go formatting, doc links,
+  changelog and buf lint before a commit; the version gate and unit tests before a push.
+- **`task ci:line-endings`** in the docs job: act copies the working tree, not the commit, so a
+  CRLF file on disk breaks it even when the commit is clean.
+- **`task release:next`** adds the next changelog version and sets `package.json` to match.
+- **`task adr:new` and `rfc:new`** create the next numbered ADR or RFC in the house format.
+- **Shared VS Code config**: recommended extensions, launch configs for both services and the
+  current test package, and a compound that starts both.
+- **gofumpt and goimports** through golangci-lint, with `task go:fmt`.
+- **`-config` flag and `log_format`** on both services. Relative paths in a config resolve
+  against the config file's directory, so a service runs from any working directory. Local
+  configs log text; everything else stays JSON.
+
+### Changed
+
+- Test output prints each package's share of the workspace and one merged coverage total,
+  instead of repeating the full package list per line.
+
 ## [0.1.0] - The Phase 1 Scaffold (2026-09-24)
 
 **The first commit of the platform itself.** Before this, `main` held a README and a license. This

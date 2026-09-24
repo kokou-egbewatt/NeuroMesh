@@ -33,6 +33,15 @@ linters:
       - path: _test\.go$
         linters: [noctx]
 
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/kokou-egbewatt/NeuroMesh
+
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

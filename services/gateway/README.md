@@ -19,19 +19,21 @@ Errors are always `{"error":{"code","message","request_id","field","limit"}}`. T
 
 ```sh
 task certs:dev   # once, from the repository root
-task run         # go run ./cmd/server, HTTPS on :8443
-curl --cacert ../../certs/dev/ca.crt https://localhost:8443/v1/route \
-  -H 'Content-Type: application/json' -d '{"model":"llama3","prompt":"hello"}'
+task run         # go run ./cmd/server (or `task dev` from the root for both, with live reload), HTTPS on :8443
+task call:route  # from the root; curl with the dev CA
 ```
+
+Calling it by hand needs `--cacert certs/dev/ca.crt`, plus `--ssl-no-revoke` with Windows curl, which otherwise demands a revocation check a throwaway CA cannot answer. `task certs:trust` removes the need for `--cacert`.
 
 ## Config
 
-`configs/config.yaml` (local run) and `configs/config.container.yaml` (baked into the image, certificates at `/certs`). `CONFIG_PATH` picks the file; `GATEWAY_ADDR` and `RUNTIME_ADDR` override the listen and runtime addresses. Unknown keys fail startup.
+`configs/config.yaml` (local run) and `configs/config.container.yaml` (baked into the image, certificates at `/certs`). `-config` or `CONFIG_PATH` picks the file, and relative paths inside it resolve against its directory; `GATEWAY_ADDR` and `RUNTIME_ADDR` override the listen and runtime addresses. Unknown keys fail startup.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `addr` | `:8443` | HTTPS listen address |
 | `log_level` | `info` | `debug`, `info`, `warn`, `error` |
+| `log_format` | `json` | `json` or `text`; the local config uses `text` |
 | `shutdown_timeout` | `10s` | Drain time on SIGTERM |
 | `tls.cert_file`, `tls.key_file` | | Edge certificate. `tls.insecure: true` serves plaintext and logs a warning |
 | `http.read_header_timeout`, `read_timeout`, `idle_timeout`, `max_header_bytes` | `5s`, `30s`, `120s`, `64 KiB` | Connection bounds |

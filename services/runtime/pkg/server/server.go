@@ -20,14 +20,16 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/kokou-egbewatt/NeuroMesh/packages/config"
-	"github.com/kokou-egbewatt/NeuroMesh/services/runtime/internal/stub"
 	neuromeshv1 "github.com/kokou-egbewatt/NeuroMesh/sdk/go/gen/neuromesh/v1"
+	"github.com/kokou-egbewatt/NeuroMesh/services/runtime/internal/stub"
 )
 
 // Config is the runtime's config file.
 type Config struct {
 	Addr     string `yaml:"addr"`
 	LogLevel string `yaml:"log_level"`
+	// LogFormat is json (default) or text; local configs use text.
+	LogFormat string `yaml:"log_format"`
 	// ShutdownTimeout bounds GracefulStop; after it, in-flight calls are cut.
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
 	// MaxRecvMsgBytes must stay above the gateway's limits.max_body_bytes, or
