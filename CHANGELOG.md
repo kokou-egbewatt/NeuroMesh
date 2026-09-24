@@ -59,6 +59,7 @@ run to find out that a file had CRLF line endings.** This release is the daily l
 - **Actions run on Node 24** (checkout v7, setup-go v7, setup-node v7, pnpm/action-setup v6), and
   jobs are pinned to `ubuntu-24.04`, so the `ubuntu-latest` move to Ubuntu 26 on 2026-10-19 lands as
   a deliberate change rather than a silent one.
+- **No Pulumi.** `infra/pulumi` is removed; Terraform is the only infrastructure-as-code tool.
 - **Builds use Go 1.26.8**, pinned as `toolchain go1.26.8` in `go.work` and in both Dockerfiles,
   while the `go` lines stay at 1.26.3, the minimum the code needs. setup-go v7 sets
   `GOTOOLCHAIN=local`, which showed that buf v1.73.0 needs Go 1.26.7: CI had been quietly
