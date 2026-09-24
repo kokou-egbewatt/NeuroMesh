@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package neuromesh.v1;
+
+option go_package = "github.com/kokou-egbewatt/NeuroMesh/sdk/go/gen/neuromesh/v1;neuromeshv1";
+
+// InferenceService is the unified inference contract fronting all supported
+// serving backends (Triton, vLLM, TensorRT-LLM, Ollama, SGLang).
+service InferenceService {
+  // Route performs a single unary inference call.
+  rpc Route(RouteRequest) returns (RouteResponse);
+
+  // StreamInference streams inference output as it is produced.
+  rpc StreamInference(StreamRequest) returns (stream StreamChunk);
+}
+
+// GenerationParams controls how a model generates output. All fields are
+// optional; a zero value means "use the backend's default."
+message GenerationParams {
+  float temperature = 1;
+  int32 max_tokens = 2;
+  repeated string stop = 3;
+}
+
+// Usage reports token counts for a completed (or completing) generation.
+message Usage {
+  int32 prompt_tokens = 1;
+  int32 completion_tokens = 2;
+}
+
+message RouteRequest {
+  // request_id correlates this call across gateway, runtime, and traces.
+  // Callers should set it; the gateway assigns one if left empty.
+  string request_id = 1;
+  string model = 2;
+  string prompt = 3;
+  GenerationParams params = 4;
+}
+
+message RouteResponse {
+  string request_id = 1;
+  string output = 2;
+  Usage usage = 3;
+}
+
+message StreamRequest {
+  string request_id = 1;
+  string model = 2;
+  string prompt = 3;
+  GenerationParams params = 4;
+}
+
+// StreamChunk carries exactly one of: a token, a final usage summary, or an
+// error. done is true on the last chunk of the stream, whether it ends in
+// usage or in error.
+message StreamChunk {
+  string request_id = 1;
+  oneof payload {
+    string token = 2;
+    Usage usage = 3;
+    string error = 4;
+  }
+  bool done = 5;
+}

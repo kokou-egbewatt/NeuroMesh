@@ -1,0 +1,72 @@
+name: CI
+
+# Thin wrappers over Taskfile targets: a job here runs exactly what
+# `task ci:<job>` runs in a terminal or under act.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  version:
+    name: Version control
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The version gate compares against origin/main.
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - run: task ci:version
+
+  go:
+    name: Go (deps, build, vet, lint, test)
+    needs: version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          tools: task golangci-lint
+      - run: task ci:go
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [ -f coverage.out ]; then
+            echo "### Go coverage" >> "$GITHUB_STEP_SUMMARY"
+            go tool cover -func=coverage.out | tail -1 >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  proto:
+    name: Proto (lint, generated code, breaking changes)
+    needs: version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+        with:
+          tools: task buf protoc-gen-go protoc-gen-go-grpc
+      - run: task ci:proto
+
+  web:
+    name: Web (pnpm workspace)
+    needs: version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: ./.github/actions/setup
+      - run: task ci:web

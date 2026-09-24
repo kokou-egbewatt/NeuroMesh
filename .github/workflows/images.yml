@@ -1,0 +1,32 @@
+name: Images
+
+# Builds both images and runs them: the gateway must serve /v1/route over HTTPS
+# with mutual TLS to the runtime, as a non-root user.
+on:
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  images:
+    name: Build and smoke-test images
+    runs-on: ubuntu-24.04
+    env:
+      IMAGE_TAG: ci
+      DOCKER_BUILDKIT: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - name: Version
+        run: task ci:summary
+      - run: task ci:images

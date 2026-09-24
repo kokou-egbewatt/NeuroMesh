@@ -1,0 +1,11 @@
+{
+  "name": "@neuromesh/sdk",
+  "private": true,
+  "version": "0.0.0",
+  "description": "TypeScript SDK for the NeuroMesh control plane and runtime APIs.",
+  "main": "index.ts",
+  "scripts": {
+    "build": "echo \"TODO: generate the TypeScript client from proto/ (#89)\" && exit 0",
+    "lint": "echo \"TODO: generate the TypeScript client from proto/ (#89)\" && exit 0"
+  }
+}
