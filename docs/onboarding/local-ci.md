@@ -8,7 +8,7 @@ Every GitHub Actions workflow here runs locally with [act](https://github.com/ne
 | --- | --- | --- |
 | act | 0.2.89 or newer | `choco install act-cli`, or [nektos/act releases](https://github.com/nektos/act/releases/latest) |
 | Docker Desktop | current | [docker.com](https://www.docker.com/products/docker-desktop/) |
-| Go | 1.26.3 (from `go.work`) | [go.dev/dl](https://go.dev/dl/) |
+| Go | 1.26.8 (from `go.work`) | [go.dev/dl](https://go.dev/dl/) |
 | task | pinned in `scripts/install-tools.sh` | `task tools:install` after installing any task once, or `go install github.com/go-task/task/v3/cmd/task@v3.52.0` |
 
 On Windows, run `task` and the scripts from Git Bash. PowerShell may resolve `bash` to WSL, which has neither this checkout's paths nor its toolchain.

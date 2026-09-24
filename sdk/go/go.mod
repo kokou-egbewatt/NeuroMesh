@@ -1,6 +1,6 @@
 module github.com/kokou-egbewatt/NeuroMesh/sdk/go
 
-go 1.26.3
+go 1.26.8
 
 replace github.com/kokou-egbewatt/NeuroMesh/packages/middleware => ../../packages/middleware
 

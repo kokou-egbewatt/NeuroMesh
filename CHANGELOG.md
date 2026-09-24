@@ -50,6 +50,9 @@ run to find out that a file had CRLF line endings.** This release is the daily l
 - **Actions run on Node 24** (checkout v7, setup-go v7, setup-node v7, pnpm/action-setup v6), and
   jobs are pinned to `ubuntu-24.04`, so the `ubuntu-latest` move to Ubuntu 26 on 2026-10-19 lands as
   a deliberate change rather than a silent one.
+- **Go 1.26.8 everywhere** (`go.work`, every `go.mod`, both Dockerfiles). setup-go v7 sets
+  `GOTOOLCHAIN=local`, which showed that buf v1.73.0 needs Go 1.26.7: CI had been quietly downloading
+  a newer toolchain than the repository declared.
 
 ## [0.1.0] - The Phase 1 Scaffold (2026-09-24)
 

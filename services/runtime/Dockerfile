@@ -5,7 +5,7 @@
 # Generated gRPC code is committed, so the build needs no protoc. GOWORK=off
 # builds the module through its own replace directives, the same way
 # `task deps:check` proves it can.
-FROM golang:1.26.3 AS build
+FROM golang:1.26.8 AS build
 ENV CGO_ENABLED=0 GOWORK=off GOFLAGS=-trimpath
 WORKDIR /src
 COPY packages/ packages/

@@ -1,6 +1,6 @@
 module github.com/kokou-egbewatt/NeuroMesh/packages/middleware
 
-go 1.26.3
+go 1.26.8
 
 require (
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.4
