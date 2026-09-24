@@ -68,6 +68,6 @@ same way on GitHub, under act and in a terminal
   roadmap and the local k3s and VictoriaMetrics substrate, and
   [RFC-0001](docs/rfc/0001-neuromesh-runtime.md) for the runtime. The delivery backlog lives in
   GitHub issues, one milestone per phase.
-- **Local only.** The local k3s cluster is the one environment; `deployments/dev`, `edge`,
-  `staging`, `production` and the remote `infra/` directories are placeholders until
+- **Local only.** The local k3s cluster is the one environment; `deployments/dev` and the
+  remote `infra/` directories are placeholders until
   [#90](https://github.com/kokou-egbewatt/NeuroMesh/issues/90), and nothing in CI deploys anywhere.
