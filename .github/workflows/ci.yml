@@ -15,8 +15,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  version:
+    name: Version control
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The version gate compares against origin/main.
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - run: task ci:version
+
   go:
     name: Go (deps, build, vet, lint, test)
+    needs: version
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -34,6 +46,7 @@ jobs:
 
   proto:
     name: Proto (lint, generated code, breaking changes)
+    needs: version
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -42,12 +55,11 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           tools: task buf protoc-gen-go protoc-gen-go-grpc
-      - name: Version
-        run: task ci:summary
       - run: task ci:proto
 
   web:
     name: Web (pnpm workspace)
+    needs: version
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7

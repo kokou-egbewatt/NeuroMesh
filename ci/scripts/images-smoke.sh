@@ -11,6 +11,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 tag="${IMAGE_TAG:-local}"
+version="$(grep -m1 -oE '"version":[[:space:]]*"[^"]+"' package.json | sed -E 's/.*"([^"]+)"$/\1/')"
 curl_image="curlimages/curl:8.11.1"
 id="nm-smoke-$$"
 net="$id"
@@ -50,6 +51,12 @@ for c in runtime gateway; do
 done
 echo "✅ both containers run as a non-root user"
 
+for c in runtime gateway; do
+  label="$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.version"}}' "neuromesh-$c:$tag")"
+  [[ "$label" == "$version" ]] || fail "neuromesh-$c:$tag is labelled version '$label', package.json says $version"
+done
+echo "✅ both images are labelled version $version"
+
 # The client: curl in a container on the same network, trusting only the dev CA.
 body='{"model":"llama3","prompt":"hello there world"}'
 # MSYS_NO_PATHCONV: Git Bash would rewrite the in-container /tmp/ca.crt into a
@@ -67,3 +74,22 @@ echo "✅ /v1/route served over HTTPS, gateway to runtime over mutual TLS"
 plain="$(docker run --rm --network "$net" "$curl_image" --silent --max-time 5 -o /dev/null -w '%{http_code}' http://gateway:8443/healthz 2>&1 || true)"
 [[ "$plain" != "200" ]] || fail "plain HTTP was served"
 echo "✅ plain HTTP is refused (got '$plain')"
+
+# The job summary: which version was built and what the smoke test proved.
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+  {
+    echo "### Images"
+    echo
+    echo "| Image | Version | Size | User |"
+    echo "| --- | --- | --- | --- |"
+    for c in runtime gateway; do
+      # `image ls`, not `image inspect`: with the containerd image store,
+      # inspect's .Size counts only part of the image.
+      size="$(docker image ls "neuromesh-$c:$tag" --format '{{.Size}}' | head -1)"
+      user="$(docker inspect -f '{{.Config.User}}' "neuromesh-$c:$tag")"
+      echo "| \`neuromesh-$c:$version\` | \`$version\` | $size | \`$user\` |"
+    done
+    echo
+    echo "Smoke test: \`POST /v1/route\` over HTTPS through mutual TLS answered, plain HTTP was refused."
+  } >>"$GITHUB_STEP_SUMMARY"
+fi

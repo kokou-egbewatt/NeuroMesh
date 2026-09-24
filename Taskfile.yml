@@ -191,12 +191,14 @@ tasks:
 
   # ---------------------------------------------------------------- images
   images:build:
-    desc: Build the runtime and gateway images (tag from IMAGE_TAG, default local)
+    desc: Build the runtime and gateway images, tagged IMAGE_TAG (default local) and the package.json version
     vars:
       TAG: '{{.IMAGE_TAG | default "local"}}'
+      VERSION:
+        sh: bash ci/scripts/version.sh
     cmds:
-      - docker build -f services/runtime/Dockerfile -t neuromesh-runtime:{{.TAG}} .
-      - docker build -f services/gateway/Dockerfile -t neuromesh-gateway:{{.TAG}} .
+      - docker build -f services/runtime/Dockerfile --build-arg VERSION={{.VERSION}} -t neuromesh-runtime:{{.TAG}} -t neuromesh-runtime:{{.VERSION}} .
+      - docker build -f services/gateway/Dockerfile --build-arg VERSION={{.VERSION}} -t neuromesh-gateway:{{.TAG}} -t neuromesh-gateway:{{.VERSION}} .
 
   images:smoke:
     desc: Run both images with dev certificates and serve /v1/route over HTTPS
@@ -218,6 +220,11 @@ tasks:
     desc: 'Add the next CHANGELOG version and bump package.json (task release:next -- minor "Title")'
     cmds:
       - bash scripts/release-next.sh {{.CLI_ARGS}}
+
+  ci:version:
+    desc: Version control (changelog integrity, version gate) plus the version and its changelog entry in the job summary
+    cmds:
+      - bash ci/scripts/version-control.sh
 
   ci:summary:
     desc: Version, release title and commit this run builds (to the GitHub job summary in CI)
@@ -246,12 +253,16 @@ tasks:
 
   # ---------------------------------------------------------------- ci
   ci:docs:
-    desc: CI job docs (line endings, links, changelog, version gate)
+    desc: CI job docs (line endings, Markdown links, then the latest changelog updates in the summary)
     cmds:
       - task: ci:line-endings
       - task: ci:docs-links
-      - task: ci:changelog
-      - task: ci:version-gate
+      - task: ci:changelog-summary
+
+  ci:changelog-summary:
+    desc: The latest changelog updates ([Unreleased] and the newest release), to the GitHub job summary in CI
+    cmds:
+      - bash ci/scripts/changelog-summary.sh
 
   ci:go:
     desc: CI job go (deps, build, vet, lint, test)
@@ -283,6 +294,7 @@ tasks:
   ci:
     desc: Every CI job, in the order the workflows run them
     cmds:
+      - task: ci:version
       - task: ci:docs
       - task: ci:proto
       - task: ci:go

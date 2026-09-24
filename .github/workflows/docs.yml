@@ -1,7 +1,9 @@
 name: Docs
 
-# Markdown links, changelog integrity, and the version gate. Runs on every PR,
-# including documentation-only ones: a broken link is a documentation change.
+# Line endings and Markdown links, then the latest changelog updates in the
+# job summary. Runs on every PR, including documentation-only ones: a broken
+# link is a documentation change. The changelog and version gate run in
+# ci.yml's version control job.
 on:
   pull_request:
   push:
@@ -16,14 +18,9 @@ concurrency:
 
 jobs:
   docs:
-    name: Links, changelog, version gate
+    name: Line endings, links
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-        with:
-          # The version gate compares against origin/main.
-          fetch-depth: 0
       - uses: ./.github/actions/setup
-      - name: Version
-        run: task ci:summary
       - run: task ci:docs

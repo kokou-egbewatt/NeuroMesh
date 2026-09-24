@@ -32,15 +32,21 @@ run to find out that a file had CRLF line endings.** This release is the daily l
   coverage report.
 - **Git hooks** (`lefthook.yml`, `task hooks:install`): line endings, Go formatting, doc links,
   changelog and buf lint before a commit; the version gate and unit tests before a push.
-- **`task ci:line-endings`** in the docs job: act copies the working tree, not the commit, so a
+- **`task ci:line-endings`** in the docs job, which now holds line endings and links only: act copies the working tree, not the commit, so a
   CRLF file on disk breaks it even when the commit is clean.
 - **`task release:next`** adds the next changelog version and sets `package.json` to match.
 - **`task adr:new` and `rfc:new`** create the next numbered ADR or RFC in the house format.
 - **Shared VS Code config**: recommended extensions, launch configs for both services and the
   current test package, and a compound that starts both.
-- **The version on every run.** `task ci:summary` writes the version, its release title, whether
-  main has released it, the commit and the Go version to the top of the GitHub job summary, once
-  per workflow.
+- **A version control job** (`task ci:version`, `ci/scripts/version-control.sh`) runs first in
+  `ci.yml`, and the Go, proto and web jobs wait for it. It runs the changelog integrity check and
+  the version gate, then writes the version, its release status, the commit, the Go version and
+  that version's changelog entry to the job summary, even when a check fails.
+- **The docs job shows the latest changelog updates** (`[Unreleased]` and the newest release) in
+  its summary.
+- **Images carry the version.** `task images:build` tags both images with the `package.json`
+  version and sets `org.opencontainers.image.version`; the smoke test fails if the label
+  disagrees, and writes an images table (version, size, user) under the version header.
 - **gofumpt and goimports** through golangci-lint, with `task go:fmt`.
 - **`-config` flag and `log_format`** on both services. Relative paths in a config resolve
   against the config file's directory, so a service runs from any working directory. Local

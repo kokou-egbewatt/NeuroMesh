@@ -2,6 +2,7 @@
 # The version this run builds, at the top of the GitHub job summary: the
 # package.json version, its CHANGELOG title, and whether main has released it.
 # Without GITHUB_STEP_SUMMARY (a terminal), it prints the same table.
+# --print-only prints without writing, for version-control.sh to compose.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
@@ -36,6 +37,10 @@ summary="## NeuroMesh v$version${title:+: $title}
 | Go | \`$go_version\` |
 "
 
+if [[ "${1:-}" == "--print-only" ]]; then
+  echo "$summary"
+  exit 0
+fi
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   echo "$summary" >>"$GITHUB_STEP_SUMMARY"
 fi

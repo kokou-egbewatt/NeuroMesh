@@ -17,11 +17,12 @@ On Windows, run `task` and the scripts from Git Bash. PowerShell may resolve `ba
 
 | Workflow | Job | Runs | Needs |
 | --- | --- | --- | --- |
+| `ci.yml` | version | `task ci:version`: changelog integrity, version gate, then the version and its changelog entry in the summary. The other `ci.yml` jobs wait for it | full history |
 | `ci.yml` | go | `task ci:go`: deps check, build, vet, golangci-lint, tests with `-race` and coverage | Go |
 | `ci.yml` | proto | `task ci:proto`: buf lint, generated code drift, breaking changes against `origin/main` | Go, full history |
 | `ci.yml` | web | `task ci:web`: `pnpm install --frozen-lockfile`, `pnpm -r lint` | Node 22.13+, pnpm 11 |
-| `docs.yml` | docs | `task ci:docs`: line endings, Markdown links, changelog integrity, version gate | full history |
-| `images.yml` | images | `task ci:images`: build both images, run them, serve `/v1/route` over HTTPS | Docker |
+| `docs.yml` | docs | `task ci:docs`: line endings, Markdown links, then the latest changelog updates in the summary | nothing extra |
+| `images.yml` | images | `task ci:images`: build both images tagged and labelled with the version, run them, serve `/v1/route` over HTTPS; the summary shows the version and an images table | Docker |
 
 ## Running
 
