@@ -30,7 +30,7 @@ target/
 coverage.out
 
 # Local TLS material from `task certs:dev`. On a cluster, cert-manager issues it.
-certs/
+/certs/
 
 # act: secrets never leave the machine; env.env is committed empty on purpose.
 .act/secrets.env
