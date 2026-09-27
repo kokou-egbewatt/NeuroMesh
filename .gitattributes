@@ -1,0 +1,13 @@
+# LF everywhere: act copies the working tree into a Linux container, bash
+# refuses CRLF scripts, and gofmt and the changelog checks compare bytes.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.pdf binary
+
+# Every parallel branch adds an entry at the top of the changelog. Union merge
+# keeps both sides instead of stopping the merge; check the ordering at release
+# time (`task ci:changelog` does). Entries are never edited after the fact,
+# which is what makes union safe here.
+CHANGELOG.md merge=union

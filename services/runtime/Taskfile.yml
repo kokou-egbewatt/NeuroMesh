@@ -1,0 +1,17 @@
+version: "3"
+
+tasks:
+  build:
+    desc: Build the runtime binary
+    cmds:
+      - go build -o bin/runtime ./cmd/server
+
+  run:
+    desc: Run the runtime service (needs `task certs:dev` once)
+    cmds:
+      - go run ./cmd/server
+
+  test:
+    desc: Test the runtime module
+    cmds:
+      - go test ./...

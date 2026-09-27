@@ -1,0 +1,17 @@
+version: "3"
+
+tasks:
+  build:
+    desc: Build the gateway binary
+    cmds:
+      - go build -o bin/gateway ./cmd/server
+
+  run:
+    desc: Run the gateway service (needs `task certs:dev` once)
+    cmds:
+      - go run ./cmd/server
+
+  test:
+    desc: Test the gateway module
+    cmds:
+      - go test ./...

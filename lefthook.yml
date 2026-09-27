@@ -1,0 +1,28 @@
+# Fast gates before a commit or push leaves the machine. `task hooks:install`
+# wires them in; `git commit --no-verify` skips them when you mean it. CI runs
+# the full versions of all of these.
+
+pre-commit:
+  parallel: true
+  commands:
+    line-endings:
+      run: bash ci/scripts/check-line-endings.sh {staged_files}
+    go-format:
+      glob: "*.go"
+      run: golangci-lint fmt --diff {staged_files}
+    doc-links:
+      glob: "*.md"
+      run: bash ci/scripts/check-doc-links.sh
+    changelog:
+      glob: "{CHANGELOG.md,package.json}"
+      run: bash ci/scripts/changelog-integrity.sh
+    buf-lint:
+      glob: "*.proto"
+      run: buf lint
+
+pre-push:
+  commands:
+    version-gate:
+      run: bash ci/scripts/version-gate.sh
+    unit-tests:
+      run: bash ci/scripts/go-workspace.sh unit

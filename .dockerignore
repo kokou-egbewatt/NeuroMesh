@@ -1,0 +1,9 @@
+# Keep the build context small and keep secrets out of it.
+.git
+**/node_modules
+**/bin
+certs
+coverage.out
+.act
+docs
+**/*.md

@@ -1,0 +1,38 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "runtime",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/services/runtime/cmd/server",
+      "args": ["-config", "${workspaceFolder}/services/runtime/configs/config.yaml"],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "gateway",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/services/gateway/cmd/server",
+      "args": ["-config", "${workspaceFolder}/services/gateway/configs/config.yaml"],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "current test package",
+      "type": "go",
+      "request": "launch",
+      "mode": "test",
+      "program": "${fileDirname}"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "runtime + gateway",
+      "configurations": ["runtime", "gateway"],
+      "stopAll": true,
+      "preLaunchTask": "certs:dev"
+    }
+  ]
+}

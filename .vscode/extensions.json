@@ -1,0 +1,13 @@
+{
+  "recommendations": [
+    "golang.go",
+    "bufbuild.vscode-buf",
+    "task.vscode-task",
+    "redhat.vscode-yaml",
+    "editorconfig.editorconfig",
+    "davidanson.vscode-markdownlint",
+    "ms-azuretools.vscode-docker",
+    "github.vscode-github-actions",
+    "tamasfe.even-better-toml"
+  ]
+}

@@ -1,0 +1,26 @@
+name: Docs
+
+# Line endings and Markdown links, then the latest changelog updates in the
+# job summary. Runs on every PR, including documentation-only ones: a broken
+# link is a documentation change. The changelog and version gate run in
+# ci.yml's version control job.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    name: Line endings, links
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: task ci:docs

@@ -1,0 +1,21 @@
+# Proto module config. `task proto:lint` and `task proto:breaking` read this.
+version: v2
+modules:
+  - path: proto
+lint:
+  use:
+    - STANDARD
+  # runtime.proto predates buf. Its StreamInference messages are named
+  # StreamRequest and StreamChunk, not StreamInferenceRequest and
+  # StreamInferenceResponse, and several open issues cite those names. New
+  # protos follow STANDARD with no exceptions.
+  ignore_only:
+    RPC_REQUEST_STANDARD_NAME:
+      - proto/neuromesh/v1/runtime.proto
+    RPC_RESPONSE_STANDARD_NAME:
+      - proto/neuromesh/v1/runtime.proto
+    RPC_REQUEST_RESPONSE_UNIQUE:
+      - proto/neuromesh/v1/runtime.proto
+breaking:
+  use:
+    - FILE

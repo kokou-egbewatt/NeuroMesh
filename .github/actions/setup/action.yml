@@ -1,0 +1,19 @@
+name: Set up the toolchain
+description: Go from go.work, plus the pinned tools from scripts/install-tools.sh.
+inputs:
+  tools:
+    description: Space-separated tools for scripts/install-tools.sh.
+    required: false
+    default: task
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v7
+      with:
+        go-version-file: go.work
+        cache-dependency-path: "**/go.sum"
+    - name: Install pinned tools
+      shell: bash
+      run: |
+        bash scripts/install-tools.sh ${{ inputs.tools }}
+        echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"

@@ -1,0 +1,302 @@
+version: "3"
+
+# Every CI job is `task ci:<job>`, so GitHub-hosted runners, act and a terminal
+# run the same commands. Scripts live in ci/scripts and scripts/ and run under
+# bash: on Windows, run task from Git Bash (PowerShell may resolve `bash` to WSL).
+# `task doctor` checks a machine; `task --list` shows everything.
+
+includes:
+  runtime:
+    taskfile: ./services/runtime/Taskfile.yml
+    dir: ./services/runtime
+  gateway:
+    taskfile: ./services/gateway/Taskfile.yml
+    dir: ./services/gateway
+
+vars:
+  ROUTE_BODY: '{"model":"llama3","prompt":"hello there world"}'
+
+tasks:
+  default:
+    cmds:
+      - task --list
+
+  # ---------------------------------------------------------------- setup
+  tools:install:
+    desc: Install the pinned toolchain (task, buf, protoc plugins, golangci-lint, air, lefthook)
+    cmds:
+      - bash scripts/install-tools.sh
+
+  doctor:
+    desc: Check this machine can run every task, and say what to fix
+    cmds:
+      - bash scripts/doctor.sh
+
+  hooks:install:
+    desc: Install the git hooks from lefthook.yml (fast gates before commit and push)
+    cmds:
+      - lefthook install
+
+  # ---------------------------------------------------------------- dev loop
+  dev:
+    desc: Run runtime and gateway with live reload over TLS (mints certificates on first run)
+    deps: [certs:dev]
+    cmds:
+      - task --output=prefixed dev:all
+
+  # No desc, so it stays out of task --list; task dev calls it with prefixed output.
+  dev:all:
+    deps: [dev:runtime, dev:gateway]
+
+  dev:runtime:
+    internal: true
+    prefix: runtime
+    cmds:
+      - air -c services/runtime/.air.toml
+
+  dev:gateway:
+    internal: true
+    prefix: gateway
+    cmds:
+      - air -c services/gateway/.air.toml
+
+  call:route:
+    desc: "POST /v1/route to the local gateway over HTTPS (custom body: task call:route -- '<json>')"
+    vars:
+      # CLI_ARGS arrives shell-quoted from task; the default is quoted here.
+      BODY: "{{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}'{{.ROUTE_BODY}}'{{end}}"
+    cmds:
+      - >-
+        curl --silent --show-error --ssl-no-revoke --cacert certs/dev/ca.crt
+        -H 'Content-Type: application/json' -d {{.BODY}}
+        https://localhost:8443/v1/route
+      - echo
+
+  call:health:
+    desc: GET /healthz on the local gateway over HTTPS
+    cmds:
+      - curl --silent --show-error --ssl-no-revoke --cacert certs/dev/ca.crt https://localhost:8443/healthz
+      - echo
+
+  call:runtime:
+    desc: "Call the runtime's Route directly over mutual TLS with buf curl, presenting the gateway certificate"
+    vars:
+      # CLI_ARGS arrives shell-quoted from task; the default is quoted here.
+      BODY: "{{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}'{{.ROUTE_BODY}}'{{end}}"
+    cmds:
+      - >-
+        buf curl --schema proto --protocol grpc
+        --cacert certs/dev/gateway/ca.crt --cert certs/dev/gateway/tls.crt --key certs/dev/gateway/tls.key
+        -d {{.BODY}} https://localhost:50051/neuromesh.v1.InferenceService/Route
+
+  # ---------------------------------------------------------------- certs
+  certs:dev:
+    desc: Mint a throwaway CA and per-service certificates into certs/dev for runs outside a cluster
+    cmds:
+      - go run ./tools/certs -out certs/dev {{.CLI_ARGS}}
+    status:
+      - test -f certs/dev/ca.crt
+
+  certs:trust:
+    desc: Trust the dev CA for this Windows user so browsers and curl accept https://localhost:8443
+    platforms: [windows]
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-trust-ca.ps1
+
+  certs:untrust:
+    desc: Stop trusting the dev CA for this Windows user
+    platforms: [windows]
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-trust-ca.ps1 -Remove
+
+  # ---------------------------------------------------------------- proto
+  proto:gen:
+    desc: Generate sdk/go/gen from proto/ with the pinned plugins (output is committed)
+    cmds:
+      - buf generate
+
+  proto:lint:
+    desc: Lint proto/ with buf
+    cmds:
+      - buf lint
+
+  proto:check:
+    desc: buf lint, and fail if sdk/go/gen differs from what proto/ generates
+    cmds:
+      - bash ci/scripts/proto-check.sh
+
+  proto:breaking:
+    desc: Fail on a breaking proto change against origin/main
+    cmds:
+      - bash ci/scripts/proto-breaking.sh
+
+  # ---------------------------------------------------------------- go
+  deps:check:
+    desc: Fail if any module is untidy, cannot build alone, or disagrees on shared versions
+    cmds:
+      - bash ci/scripts/deps-check.sh
+
+  deps:tidy:
+    desc: go work sync plus go mod tidy in every module
+    cmds:
+      - bash ci/scripts/deps-check.sh --fix
+
+  go:build:
+    desc: Build every workspace module
+    cmds:
+      - bash ci/scripts/go-workspace.sh build
+
+  go:vet:
+    desc: Vet every workspace module
+    cmds:
+      - bash ci/scripts/go-workspace.sh vet
+
+  go:lint:
+    desc: golangci-lint every workspace module (formatting included)
+    cmds:
+      - bash ci/scripts/go-workspace.sh lint
+
+  go:fmt:
+    desc: Format every Go file (gofumpt, goimports)
+    cmds:
+      - bash ci/scripts/go-workspace.sh fmt
+
+  go:test:
+    desc: Test every workspace module (race detector where cgo exists, coverage to coverage.out)
+    cmds:
+      - bash ci/scripts/go-workspace.sh test {{.CLI_ARGS}}
+
+  go:test:docker:
+    desc: Test every workspace module in a Linux container with -race, the way CI does
+    cmds:
+      - bash scripts/test-in-docker.sh {{.CLI_ARGS}}
+
+  test:unit:
+    desc: Unit tests only, without test/integration (the fast inner loop)
+    cmds:
+      - bash ci/scripts/go-workspace.sh unit {{.CLI_ARGS}}
+
+  test:golden:
+    desc: Rewrite the integration golden files in test/integration/testdata
+    dir: test/integration
+    cmds:
+      - go test -count=1 . -update
+
+  cover:html:
+    desc: Run the tests and write coverage.html
+    cmds:
+      - task: go:test
+      - go tool cover -html=coverage.out -o coverage.html
+      - echo "wrote coverage.html"
+
+  # ---------------------------------------------------------------- images
+  images:build:
+    desc: Build the runtime and gateway images, tagged IMAGE_TAG (default local) and the package.json version
+    vars:
+      TAG: '{{.IMAGE_TAG | default "local"}}'
+      VERSION:
+        sh: bash ci/scripts/version.sh
+    cmds:
+      - docker build -f services/runtime/Dockerfile --build-arg VERSION={{.VERSION}} -t neuromesh-runtime:{{.TAG}} -t neuromesh-runtime:{{.VERSION}} .
+      - docker build -f services/gateway/Dockerfile --build-arg VERSION={{.VERSION}} -t neuromesh-gateway:{{.TAG}} -t neuromesh-gateway:{{.VERSION}} .
+
+  images:smoke:
+    desc: Run both images with dev certificates and serve /v1/route over HTTPS
+    cmds:
+      - bash ci/scripts/images-smoke.sh
+
+  # ---------------------------------------------------------------- docs
+  adr:new:
+    desc: 'Create the next numbered ADR (task adr:new -- "Title")'
+    cmds:
+      - bash scripts/new-doc.sh adr {{.CLI_ARGS}}
+
+  rfc:new:
+    desc: 'Create the next numbered RFC (task rfc:new -- "Title")'
+    cmds:
+      - bash scripts/new-doc.sh rfc {{.CLI_ARGS}}
+
+  release:next:
+    desc: 'Add the next CHANGELOG version and bump package.json (task release:next -- minor "Title")'
+    cmds:
+      - bash scripts/release-next.sh {{.CLI_ARGS}}
+
+  ci:version:
+    desc: Version control (changelog integrity, version gate) plus the version and its changelog entry in the job summary
+    cmds:
+      - bash ci/scripts/version-control.sh
+
+  ci:summary:
+    desc: Version, release title and commit this run builds (to the GitHub job summary in CI)
+    cmds:
+      - bash ci/scripts/version-summary.sh
+
+  ci:line-endings:
+    desc: No tracked file has CRLF line endings (act copies the working tree)
+    cmds:
+      - bash ci/scripts/check-line-endings.sh
+
+  ci:docs-links:
+    desc: Every relative link in tracked Markdown resolves inside the repository
+    cmds:
+      - bash ci/scripts/check-doc-links.sh
+
+  ci:changelog:
+    desc: CHANGELOG.md has no duplicate, misordered or skipped versions and matches package.json
+    cmds:
+      - bash ci/scripts/changelog-integrity.sh
+
+  ci:version-gate:
+    desc: Code changes against origin/main carry a new CHANGELOG.md version
+    cmds:
+      - bash ci/scripts/version-gate.sh
+
+  # ---------------------------------------------------------------- ci
+  ci:docs:
+    desc: CI job docs (line endings, Markdown links, then the latest changelog updates in the summary)
+    cmds:
+      - task: ci:line-endings
+      - task: ci:docs-links
+      - task: ci:changelog-summary
+
+  ci:changelog-summary:
+    desc: The latest changelog updates ([Unreleased] and the newest release), to the GitHub job summary in CI
+    cmds:
+      - bash ci/scripts/changelog-summary.sh
+
+  ci:go:
+    desc: CI job go (deps, build, vet, lint, test)
+    cmds:
+      - task: deps:check
+      - task: go:build
+      - task: go:vet
+      - task: go:lint
+      - task: go:test
+
+  ci:proto:
+    desc: CI job proto (lint, generated code drift, breaking changes)
+    cmds:
+      - task: proto:check
+      - task: proto:breaking
+
+  ci:web:
+    desc: CI job web (pnpm workspace install from the lockfile, lint)
+    cmds:
+      - pnpm install --frozen-lockfile
+      - pnpm -r lint
+
+  ci:images:
+    desc: CI job images (build both, then run them)
+    cmds:
+      - task: images:build
+      - task: images:smoke
+
+  ci:
+    desc: Every CI job, in the order the workflows run them
+    cmds:
+      - task: ci:version
+      - task: ci:docs
+      - task: ci:proto
+      - task: ci:go
+      - task: ci:web
+      - task: ci:images

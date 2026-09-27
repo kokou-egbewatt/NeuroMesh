@@ -1,0 +1,2 @@
+{"done":false,"token":"stub token for llama3","usage":null}
+{"done":true,"token":"","usage":{"prompt_tokens":3,"completion_tokens":4}}
