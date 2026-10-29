@@ -109,6 +109,45 @@ tasks:
     cmds:
       - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-trust-ca.ps1 -Remove
 
+  # ---------------------------------------------------------------- cluster
+  # The local k3s cluster in WSL2 (#21), shaped by tools/cluster/cluster.yaml.
+  # docs/onboarding/local-cluster.md says what each command keeps.
+  cluster:start:
+    desc: Provision or reconcile the local k3s cluster in WSL2 and wait for it (idempotent)
+    platforms: [windows]
+    cmds:
+      - go run ./tools/cluster start {{.CLI_ARGS}}
+
+  cluster:status:
+    desc: Check every layer from the Windows driver to the pods (-- -probe also runs a GPU pod)
+    platforms: [windows]
+    cmds:
+      - go run ./tools/cluster status {{.CLI_ARGS}}
+
+  cluster:pause:
+    desc: Stop k3s and every pod, keeping the node, volumes and images
+    platforms: [windows]
+    cmds:
+      - go run ./tools/cluster pause
+
+  cluster:resume:
+    desc: Start the cluster again after pause or stop
+    platforms: [windows]
+    cmds:
+      - go run ./tools/cluster resume {{.CLI_ARGS}}
+
+  cluster:stop:
+    desc: Pause, then let the WSL distro stop so Windows gets its memory back
+    platforms: [windows]
+    cmds:
+      - go run ./tools/cluster stop
+
+  cluster:delete:
+    desc: Remove k3s and all its state (lists what it removes; needs -- -yes)
+    platforms: [windows]
+    cmds:
+      - go run ./tools/cluster delete {{.CLI_ARGS}}
+
   # ---------------------------------------------------------------- proto
   proto:gen:
     desc: Generate sdk/go/gen from proto/ with the pinned plugins (output is committed)

@@ -9,6 +9,32 @@ enforces it and `task ci:changelog` checks the file's structure.
 
 ## [Unreleased]
 
+## [0.4.0] - The Local Cluster (2026-10-29)
+
+**The local cluster is one command, and the GPU in it is real: a pod gets it only by asking the
+scheduler for it.** [#21](https://github.com/kokou-egbewatt/NeuroMesh/issues/21)
+
+### Added
+
+- **`task cluster:start|status|pause|resume|stop|delete`** (`tools/cluster`, shaped by
+  `tools/cluster/cluster.yaml`) run a single-node k3s in the WSL2 distro. `start` provisions or
+  reconciles and is a no-op the second time; `status` walks every layer from the Windows driver
+  to the pods and, with `-probe`, runs a GPU pod; `pause` and `stop` keep the node, volumes and
+  images; `delete` lists what it removes and needs `-yes`.
+- **`infra/kubernetes/gpu/`**: the NVIDIA device plugin with `runtimeClassName: nvidia` (as
+  published it runs and registers nothing on k3s) and a ValidatingAdmissionPolicy that rejects a
+  GPU request without the RuntimeClass, and the RuntimeClass without a GPU request.
+- **A keepalive Scheduled Task** that loops a hidden `wsl.exe` session, so the cluster survives
+  closing every terminal and comes back by itself about 9 s after the distro is terminated.
+- **[Local cluster](docs/onboarding/local-cluster.md)**: commands, what each keeps, a GPU pod's
+  two required lines, the measurements behind each choice, the reference machine's figures.
+
+### Changed
+
+- **`deployments/local/README.md`** no longer says kind and the others cannot schedule the GPU
+  under WSL2. They can; k3s was chosen because it is faster, lighter and runs GPU pods
+  unprivileged ([infinity-bench #22](https://github.com/kokou-egbewatt/infinity-bench/issues/22)).
+
 ## [0.3.0] - The Stub-Path Baseline (2026-09-28)
 
 **Before the stub gives way to a real backend, a number for what the platform itself costs.**

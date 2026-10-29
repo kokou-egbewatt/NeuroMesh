@@ -1,0 +1,44 @@
+# Rationing is only real if every GPU pod goes through the scheduler. On k3s the nvidia RuntimeClass
+# gives a pod the GPU whether or not it requests nvidia.com/gpu, and a request without the
+# RuntimeClass holds the GPU with no driver. This rejects both. kube-system is exempt: the device
+# plugin itself runs with the RuntimeClass and requests nothing.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: gpu-request-and-runtimeclass-together
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: [""]
+      apiVersions: ["v1"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["pods"]
+  variables:
+  - name: wantsGpu
+    expression: >-
+      object.spec.containers.exists(c, has(c.resources) && has(c.resources.limits)
+      && 'nvidia.com/gpu' in c.resources.limits)
+  - name: nvidiaRuntime
+    expression: "has(object.spec.runtimeClassName) && object.spec.runtimeClassName == 'nvidia'"
+  validations:
+  - expression: "!variables.nvidiaRuntime || variables.wantsGpu"
+    message: >-
+      runtimeClassName nvidia without a nvidia.com/gpu limit would use the GPU without the
+      scheduler knowing. Add resources.limits nvidia.com/gpu: 1.
+  - expression: "!variables.wantsGpu || variables.nvidiaRuntime"
+    message: >-
+      nvidia.com/gpu requested without runtimeClassName nvidia would hold the GPU with no driver.
+      Add runtimeClassName: nvidia.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: gpu-request-and-runtimeclass-together
+spec:
+  policyName: gpu-request-and-runtimeclass-together
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchExpressions:
+      - {key: kubernetes.io/metadata.name, operator: NotIn, values: [kube-system]}

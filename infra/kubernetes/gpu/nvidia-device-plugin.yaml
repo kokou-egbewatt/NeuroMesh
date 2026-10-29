@@ -1,0 +1,58 @@
+# NVIDIA device plugin v0.18.2, from the published static manifest
+# (deployments/static/nvidia-device-plugin.yml) with three changes:
+#
+# - runtimeClassName: nvidia. As published the plugin runs under k3s's default runtime (runc),
+#   cannot see the GPU, logs "Incompatible strategy detected auto" and registers nothing while the
+#   pod still reports Running. Measured in infinity-bench #22, step 03.
+# - The config file comes from the nvidia-device-plugin-config ConfigMap, which `tools/cluster`
+#   writes from cluster.yaml's gpu.timeSlicing. One replica means no sharing.
+# - CONFIG_FILE points at it.
+#
+# `tools/cluster start` copies this file into k3s's auto-deploy folder
+# (/var/lib/rancher/k3s/server/manifests), so it is reapplied on every k3s start.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-device-plugin-daemonset
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      name: nvidia-device-plugin-ds
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        name: nvidia-device-plugin-ds
+    spec:
+      runtimeClassName: nvidia
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      priorityClassName: system-node-critical
+      containers:
+        - image: nvcr.io/nvidia/k8s-device-plugin:v0.18.2
+          name: nvidia-device-plugin-ctr
+          env:
+            - name: CONFIG_FILE
+              value: /config/config.yaml
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: kubelet-device-plugins-dir
+              mountPath: /var/lib/kubelet/device-plugins
+            - name: config
+              mountPath: /config
+              readOnly: true
+      volumes:
+        - name: kubelet-device-plugins-dir
+          hostPath:
+            path: /var/lib/kubelet/device-plugins
+            type: Directory
+        - name: config
+          configMap:
+            name: nvidia-device-plugin-config
