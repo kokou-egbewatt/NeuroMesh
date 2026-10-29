@@ -172,7 +172,7 @@ tasks:
       - bash scripts/test-in-docker.sh {{.CLI_ARGS}}
 
   test:unit:
-    desc: Unit tests only, without test/integration (the fast inner loop)
+    desc: Unit tests only, without test/integration or the benchmarks (the fast inner loop)
     cmds:
       - bash ci/scripts/go-workspace.sh unit {{.CLI_ARGS}}
 
@@ -188,6 +188,34 @@ tasks:
       - task: go:test
       - go tool cover -html=coverage.out -o coverage.html
       - echo "wrote coverage.html"
+
+  # ---------------------------------------------------------------- bench
+  # The stub-path baseline (benchmarks/inference/BASELINE.md). Record it on a
+  # quiet machine on AC power; CI only smoke-runs it (TestSmoke) because
+  # hosted runners are too noisy for numbers.
+  bench:
+    desc: Record the stub-path baseline (gateway to runtime over TLS) and the handler micro-benchmark
+    vars:
+      COMMIT:
+        sh: echo "$(git rev-parse --short HEAD)$(git diff --quiet HEAD -- || echo -dirty)"
+    cmds:
+      - go run ./benchmarks/inference/cmd/bench -commit {{.COMMIT}} -out benchmarks/inference/results/latest.json {{.CLI_ARGS}}
+      - go test -run '^$' -bench RouteHandler -benchmem -count 5 ./services/gateway/internal/httpapi/
+
+  bench:repeat:
+    desc: Run the baseline twice and fail if any p50 drifts by 10% or more between the runs
+    vars:
+      COMMIT:
+        sh: echo "$(git rev-parse --short HEAD)$(git diff --quiet HEAD -- || echo -dirty)"
+    cmds:
+      - go run ./benchmarks/inference/cmd/bench -commit {{.COMMIT}} -out benchmarks/inference/results/run1.json {{.CLI_ARGS}}
+      - go run ./benchmarks/inference/cmd/bench -commit {{.COMMIT}} -out benchmarks/inference/results/run2.json {{.CLI_ARGS}}
+      - go run ./benchmarks/inference/cmd/bench -compare benchmarks/inference/results/run1.json,benchmarks/inference/results/run2.json
+
+  bench:docker:
+    desc: Record the baseline twice in a Linux container (the reference environment) and check repeatability
+    cmds:
+      - bash scripts/bench-in-docker.sh {{.CLI_ARGS}}
 
   # ---------------------------------------------------------------- images
   images:build:

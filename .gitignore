@@ -50,3 +50,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# `task bench` output; the recorded baseline is benchmarks/inference/BASELINE.md.
+/benchmarks/inference/results/
