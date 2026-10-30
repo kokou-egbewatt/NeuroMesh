@@ -9,6 +9,42 @@ enforces it and `task ci:changelog` checks the file's structure.
 
 ## [Unreleased]
 
+## [0.3.0] - The Stub-Path Baseline (2026-09-28)
+
+**Before the stub gives way to a real backend, a number for what the platform itself costs.**
+Issues #1, #6, #7 and #10 each add work to the hot path; this release records the path without
+them, so each of those changes can say what it cost
+([#13](https://github.com/kokou-egbewatt/NeuroMesh/issues/13)).
+
+### Added
+
+- **`benchmarks/inference`**, a workspace module with a closed-loop load driver (fixed request
+  counts, at least 1000 per worker, discarded warmup, exact percentiles over every sample) that
+  measures `/v1/route` over HTTPS at 1, 8 and 64 concurrent clients and `StreamInference` over
+  mutual TLS at 1 and 8, reporting p50, p95, p99, req/s, time to first chunk and chunks/s.
+  `TestSmoke` runs every case at a tiny count in CI; `BenchmarkRoute` and `BenchmarkStream` expose
+  the same cases to `go test -bench`. The driver has no dependencies outside the standard library
+  and cpuid, so `go work sync` adds nothing to the service modules.
+- **[`BASELINE.md`](benchmarks/inference/BASELINE.md)** with the reference numbers, the environment
+  they came from and the protocol for recording the next run.
+- **`task bench`, `bench:repeat` and `bench:docker`.** `bench:repeat` and `bench:docker` run the
+  matrix twice and fail if any p50 moves by 10% or more; `bench:docker` runs in a Linux container,
+  the reference environment.
+- **`BenchmarkRouteHandler`**, the gateway handler alone against a fake client: about 7 µs and 50
+  allocations of a 340 µs round trip.
+
+### Changed
+
+- **The integration harness is a package.** `test/integration/harness` boots both services for the
+  golden tests and the benchmarks alike, so both measure the same wiring.
+- `task test:unit` skips `benchmarks/` along with `test/`, since both open sockets.
+
+### Fixed
+
+- **Sub-millisecond timing on Windows.** Go's monotonic clock there advances about every 0.5 ms,
+  so a request measured with `time.Since` reads 0. The driver reads QueryPerformanceCounter on
+  Windows and refuses to run on a clock coarser than 1 µs.
+
 ## [0.2.0] - Local Developer Tooling (2026-09-24)
 
 **The scaffold worked, and using it took two terminals, a curl flag nobody remembered, and a CI

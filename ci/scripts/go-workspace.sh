@@ -18,9 +18,10 @@ case "$cmd" in
   lint) golangci-lint run "${pkgs[@]}" ;;
   fmt) golangci-lint fmt "${pkgs[@]%/...}" ;;
   test | unit)
-    # unit skips test/integration: no sockets, seconds, for the inner loop.
+    # unit skips test/integration and the benchmarks: no sockets, seconds, for
+    # the inner loop.
     if [[ "$cmd" == unit ]]; then
-      mapfile -t pkgs < <(workspace_patterns | tr ' ' '\n' | grep -v -e '^./test/' -e '^$')
+      mapfile -t pkgs < <(workspace_patterns | tr ' ' '\n' | grep -v -e '^./test/' -e '^./benchmarks/' -e '^$')
     fi
     # The race detector needs cgo. CI always has it and must run with it; a
     # Windows machine without gcc runs without it and says so.
