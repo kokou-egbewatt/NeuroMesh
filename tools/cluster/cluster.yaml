@@ -1,0 +1,22 @@
+# The local cluster's shape, read by `task cluster:*` (tools/cluster). One cluster serves NeuroMesh
+# and infinity-bench: every plain WSL2 distro shares one network namespace, so two k3s clusters
+# cannot run side by side (#21, #23).
+
+# WSL distro the cluster runs in. It needs systemd and nvidia-container-toolkit.
+distro: Ubuntu
+
+# Node name, and the kubeconfig context written for Windows kubectl and helm.
+node: gpu-lab
+
+# Pinned k3s release. `start` installs it when k3s is absent and warns when the installed one differs.
+k3s: v1.36.5+k3s1
+
+# Packaged components switched off at install. Ingress is #23's decision.
+disable: [traefik]
+
+gpu:
+  # Fail `start` and `status` when no nvidia.com/gpu is advertised.
+  expected: true
+  # nvidia.com/gpu replicas per physical card. 1 while infinity-bench measures on this cluster,
+  # because time-slicing shares compute but not memory: every replica sees the whole card.
+  timeSlicing: 1
