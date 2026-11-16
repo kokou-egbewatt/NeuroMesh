@@ -2,6 +2,12 @@
 # gives a pod the GPU whether or not it requests nvidia.com/gpu, and a request without the
 # RuntimeClass holds the GPU with no driver. This rejects both. kube-system is exempt: the device
 # plugin itself runs with the RuntimeClass and requests nothing.
+#
+# One more shape is allowed (#22): a GPU observer, which reads counters around the clock and
+# computes nothing, so it must not hold the one nvidia.com/gpu workloads ask for. It has to be all
+# of: in the observability namespace, labelled neuromesh.dev/gpu-observer: "true", owned by a
+# DaemonSet, and requesting no GPU. dcgm-exporter is the only one. A bare pod with the label, or
+# the label in any other namespace, is still rejected; `task cluster:status -- -probe` checks both.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
@@ -21,8 +27,15 @@ spec:
       && 'nvidia.com/gpu' in c.resources.limits)
   - name: nvidiaRuntime
     expression: "has(object.spec.runtimeClassName) && object.spec.runtimeClassName == 'nvidia'"
+  - name: gpuObserver
+    expression: >-
+      request.namespace == 'observability'
+      && has(object.metadata.labels) && 'neuromesh.dev/gpu-observer' in object.metadata.labels
+      && object.metadata.labels['neuromesh.dev/gpu-observer'] == 'true'
+      && has(object.metadata.ownerReferences)
+      && object.metadata.ownerReferences.exists(o, o.kind == 'DaemonSet' && o.apiVersion == 'apps/v1')
   validations:
-  - expression: "!variables.nvidiaRuntime || variables.wantsGpu"
+  - expression: "!variables.nvidiaRuntime || variables.wantsGpu || variables.gpuObserver"
     message: >-
       runtimeClassName nvidia without a nvidia.com/gpu limit would use the GPU without the
       scheduler knowing. Add resources.limits nvidia.com/gpu: 1.

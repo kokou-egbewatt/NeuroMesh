@@ -299,6 +299,25 @@ func TestProbePodShapes(t *testing.T) {
 	}
 }
 
+func TestObserverPodShapes(t *testing.T) {
+	owned := observerPod("o", observabilityNamespace, true)
+	for _, want := range []string{"runtimeClassName: nvidia", `neuromesh.dev/gpu-observer: "true"`, "kind: DaemonSet", "namespace: observability"} {
+		if !strings.Contains(owned, want) {
+			t.Errorf("owned observer lacks %q:\n%s", want, owned)
+		}
+	}
+	if strings.Contains(owned, "nvidia.com/gpu") {
+		t.Error("an observer must not request the GPU")
+	}
+	if strings.Contains(observerPod("o", observabilityNamespace, false), "ownerReferences") {
+		t.Error("bare observer has an owner")
+	}
+	var pod map[string]any
+	if err := yaml.Unmarshal([]byte(owned), &pod); err != nil {
+		t.Errorf("observer pod is not YAML: %v", err)
+	}
+}
+
 func TestEncodePS(t *testing.T) {
 	// "ok" in UTF-16LE is 6f 00 6b 00
 	if got := encodePS("ok"); got != "bwBrAA==" {
