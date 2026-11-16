@@ -1,0 +1,11 @@
+{{- /* Each file under files/rules/ is plain rule groups; this wraps it in a VMRule for vmalert. */}}
+{{- range $path, $_ := .Files.Glob "files/rules/*.yaml" }}
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: neuromesh-{{ base $path | trimSuffix ".yaml" }}
+  labels: { app.kubernetes.io/part-of: neuromesh }
+spec:
+{{ $.Files.Get $path | fromYaml | toYaml | indent 2 }}
+{{- end }}

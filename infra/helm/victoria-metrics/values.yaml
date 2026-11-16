@@ -1,0 +1,146 @@
+# The metrics half of the observability profile (#22) on the local k3s cluster.
+# scripts/observability.sh installs it; observability/victoria-metrics/README.md explains it.
+#
+# Requests are where a pod starts; they are replaced by measured figures in
+# docs/onboarding/local-cluster.md. CPU has no limits on purpose: on one node a CPU limit only
+# throttles, and requests already decide placement. Memory limits stay, so a leak gets OOMKilled
+# instead of starving the node.
+
+# The alert sink: Alertmanager's only receiver until there is a pager. It writes each alert as
+# one JSON line on stdout, where the logs half of the profile will pick it up.
+alertSink:
+  enabled: true
+  port: 9095
+  image: python:3.13-alpine
+
+victoria-metrics-k8s-stack:
+  fullnameOverride: vm
+
+  victoria-metrics-operator:
+    # CRDs come from the victoria-metrics-operator-crds chart, installed first, so a service
+    # chart's VMServiceScrape can render before this chart is up.
+    crds:
+      enabled: false
+      plain: false
+      cleanup:
+        enabled: false
+    # The CRs are applied while the operator pod is still starting.
+    admissionWebhooks:
+      policy: Ignore
+    resources:
+      requests: { cpu: 50m, memory: 96Mi }
+      limits: { memory: 256Mi }
+
+  # k3s runs the scheduler, controller-manager and proxy inside the server binary and keeps state
+  # in sqlite, so none of these has an endpoint to scrape, and their rules would fire forever.
+  kubeEtcd: { enabled: false }
+  kubeScheduler: { enabled: false }
+  kubeControllerManager: { enabled: false }
+  kubeProxy: { enabled: false }
+  defaultRules:
+    groups:
+      etcd: { create: false }
+      kube-scheduler.rules: { create: false }
+      kubernetes-system-controller-manager: { create: false }
+      kubernetes-system-scheduler: { create: false }
+      vmcluster: { create: false }
+
+  vmsingle:
+    spec:
+      # 45 days, so a month of DCGM data survives with room to read it. VMSingle has no
+      # size-based retention; the bound by bytes is the free-space floor below, and the measured
+      # growth is in docs/onboarding/local-cluster.md.
+      retentionPeriod: 45d
+      extraArgs:
+        # Stop ingesting, rather than fill the distro's disk, when less than this is free.
+        # local-path does not enforce the PVC size, so the floor is what protects the node.
+        storage.minFreeDiskSpaceBytes: 5GiB
+      storage:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 10Gi
+      resources:
+        requests: { cpu: 100m, memory: 256Mi }
+        limits: { memory: 1Gi }
+
+  vmagent:
+    spec:
+      scrapeInterval: 30s
+      extraArgs:
+        promscrape.streamParse: "true"
+        promscrape.dropOriginalLabels: "true"
+      resources:
+        requests: { cpu: 50m, memory: 128Mi }
+        limits: { memory: 512Mi }
+
+  vmalert:
+    spec:
+      evaluationInterval: 30s
+      resources:
+        requests: { cpu: 25m, memory: 64Mi }
+        limits: { memory: 256Mi }
+
+  alertmanager:
+    spec:
+      resources:
+        requests: { cpu: 10m, memory: 32Mi }
+        limits: { memory: 128Mi }
+    config:
+      route:
+        receiver: alert-sink
+        group_by: [alertname, namespace]
+        group_wait: 30s
+        group_interval: 5m
+        # Long, so resuming the cluster after a pause doesn't replay every alert.
+        repeat_interval: 12h
+        routes:
+          - matchers: [alertname="Watchdog"]
+            receiver: watchdog
+      receivers:
+        - name: alert-sink
+          webhook_configs:
+            - url: http://vm-alert-sink:9095/alert
+              send_resolved: true
+        # The always-firing Watchdog proves the pipeline is alive; logging it every 12 h is enough.
+        - name: watchdog
+          webhook_configs:
+            - url: http://vm-alert-sink:9095/alert
+              send_resolved: false
+
+  # Only what this half of the profile deploys. VictoriaLogs and Tempo add theirs in the second half.
+  defaultDatasources:
+    victoriametrics:
+      datasources:
+        - name: VictoriaMetrics
+          type: prometheus
+          access: proxy
+          uid: victoriametrics
+          isDefault: true
+    victorialogs:
+      datasources: []
+    victoriatraces:
+      datasources: []
+
+  grafana:
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { memory: 384Mi }
+    sidecar:
+      resources:
+        requests: { cpu: 10m, memory: 48Mi }
+        # Sized for the init container, which OOMs at 64Mi.
+        limits: { memory: 256Mi }
+    # No persistence: dashboards and datasources are code, and nothing typed into the UI is kept.
+    persistence:
+      enabled: false
+
+  prometheus-node-exporter:
+    resources:
+      requests: { cpu: 10m, memory: 24Mi }
+      limits: { memory: 64Mi }
+
+  kube-state-metrics:
+    resources:
+      requests: { cpu: 10m, memory: 48Mi }
+      limits: { memory: 192Mi }

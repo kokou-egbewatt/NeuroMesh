@@ -1,0 +1,10 @@
+apiVersion: v2
+name: neuromesh-victoria-metrics
+description: The metrics half of the observability profile (#22) - VMSingle, vmagent, vmalert, Alertmanager, Grafana, node-exporter and kube-state-metrics, with the platform's values, rules, dashboards and alert sink.
+type: application
+version: 0.1.0
+appVersion: v1.155.0
+dependencies:
+  - name: victoria-metrics-k8s-stack
+    version: 0.97.1
+    repository: https://victoriametrics.github.io/helm-charts

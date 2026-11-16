@@ -1,0 +1,6 @@
+apiVersion: v2
+name: dcgm-exporter
+description: NVIDIA dcgm-exporter as a GPU observer on the local cluster (#22) - every DCGM field the exporter knows, scraped by vmagent.
+type: application
+version: 0.1.0
+appVersion: 4.2.3-4.1.3

@@ -7,7 +7,10 @@ import (
 	"strings"
 )
 
-const probeNamespace = "cluster-probe"
+const (
+	probeNamespace         = "cluster-probe"
+	observabilityNamespace = "observability"
+)
 
 // probePod is a pod that asks for the GPU the way every GPU workload here must: the RuntimeClass
 // and a nvidia.com/gpu limit. Pass rc or gpu false to build the two shapes the admission policy
@@ -23,6 +26,20 @@ func probePod(name string, rc, gpu bool) string {
 	if gpu {
 		b.WriteString("      resources:\n        limits: {nvidia.com/gpu: 1}\n")
 	}
+	return b.String()
+}
+
+// observerPod is the GPU-observer shape the admission policy allows (#22): the RuntimeClass, no
+// GPU request, the observer label, in ns. owned adds a DaemonSet ownerReference, which the API
+// server does not check at admission, so a dry run can show the policy's answer for each case.
+func observerPod(name, ns string, owned bool) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "apiVersion: v1\nkind: Pod\nmetadata:\n  name: %s\n  namespace: %s\n", name, ns)
+	b.WriteString("  labels: {neuromesh.dev/gpu-observer: \"true\"}\n")
+	if owned {
+		b.WriteString("  ownerReferences:\n    - {apiVersion: apps/v1, kind: DaemonSet, name: probe, uid: 00000000-0000-0000-0000-000000000000}\n")
+	}
+	b.WriteString("spec:\n  runtimeClassName: nvidia\n  containers:\n    - name: probe\n      image: ubuntu:24.04\n")
 	return b.String()
 }
 
@@ -69,6 +86,33 @@ func probe(ctx context.Context, kctx string) []check {
 			add(pass, "policy", "rejects %s", p.why)
 		} else {
 			add(failure, "policy", "accepted %s: %s", p.why, out)
+		}
+	}
+
+	// The observer exemption, only where the observability namespace exists to test it in.
+	if _, err := kubectl(ctx, kctx, "", "get", "namespace", observabilityNamespace); err == nil {
+		for _, p := range []struct {
+			name, ns string
+			owned    bool
+			allow    bool
+			why      string
+		}{
+			{"observer", observabilityNamespace, true, true, "a GPU observer owned by a DaemonSet in " + observabilityNamespace},
+			{"observer-bare", observabilityNamespace, false, false, "a bare pod with the observer label"},
+			{"observer-elsewhere", probeNamespace, true, false, "the observer label outside " + observabilityNamespace},
+		} {
+			out, err := kubectl(ctx, kctx, observerPod(p.name, p.ns, p.owned), "apply", "--dry-run=server", "-f", "-")
+			rejected := err != nil && strings.Contains(out, "gpu-request-and-runtimeclass-together")
+			switch {
+			case p.allow && err == nil:
+				add(pass, "policy", "allows %s", p.why)
+			case !p.allow && rejected:
+				add(pass, "policy", "rejects %s", p.why)
+			case p.allow:
+				add(failure, "policy", "rejected %s: %s", p.why, out)
+			default:
+				add(failure, "policy", "accepted %s: %s", p.why, out)
+			}
 		}
 	}
 	return cs
