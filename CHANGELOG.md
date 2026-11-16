@@ -9,6 +9,39 @@ enforces it and `task ci:changelog` checks the file's structure.
 
 ## [Unreleased]
 
+## [0.5.0] - Metrics on the Local Cluster (2026-11-16)
+
+**The metrics half of the observability profile runs on the local cluster, and the GPU is in it.**
+[#22](https://github.com/kokou-egbewatt/NeuroMesh/issues/22) stays open for logs, traces, the
+collector and NetworkPolicy, and Grafana's hostname comes with the local edge.
+
+### Added
+
+- **`task obs:up|down|status|access|test-rules`** (`scripts/observability.sh`) install the profile on the
+  `observability` namespace: the VictoriaMetrics CRDs first, then the stack, then dcgm-exporter.
+  `obs:access` lists each UI's hostname, path and login, masked on the console and in full in
+  `~/.neuromesh/access.md`; a hostname shows as reachable once an HTTPRoute serves it.
+- **`infra/helm/victoria-metrics/`**, an umbrella over `victoria-metrics-k8s-stack` 0.97.1: VMSingle,
+  vmagent, vmalert, Alertmanager, Grafana, node-exporter and kube-state-metrics, with k3s's absent
+  control-plane scrapes and rules off, 45-day retention with a 5 GiB free-space floor, and an alert
+  sink that writes each alert as a JSON line.
+- **`infra/helm/dcgm-exporter/`**: dcgm-exporter as a GPU observer, collecting all 55 fields the
+  exporter ships a definition for. On the RTX 5060 under WSL2, 27 report and the profiling fields
+  don't.
+- **Rules and dashboards as code:** `VMRule`s for dcgm-exporter down, GPU above 85 °C and a NeuroMesh
+  service down, unit tested with `vmalert-tool` (`observability/victoria-metrics/tests/`); a
+  platform status dashboard and a GPU dashboard.
+
+### Changed
+
+- **The GPU admission policy** allows one more shape: a GPU observer in `observability`, labelled
+  `neuromesh.dev/gpu-observer: "true"`, owned by a DaemonSet and requesting no GPU, so it doesn't
+  hold the card's one `nvidia.com/gpu`. `task cluster:status -- -probe` checks the exception and
+  that a bare labelled pod, or the label elsewhere, is still rejected.
+- **`docs/onboarding/local-cluster.md`** records the profile's footprint (380m and 1099 MiB requested,
+  about 100m and 1182 MiB in use) and that dcgm-exporter's VRAM is below the desktop's noise.
+- **The observability READMEs** describe what is deployed and where its files live.
+
 ## [0.4.0] - The Local Cluster (2026-10-29)
 
 **The local cluster is one command, and the GPU in it is real: a pod gets it only by asking the
