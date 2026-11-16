@@ -9,6 +9,37 @@ enforces it and `task ci:changelog` checks the file's structure.
 
 ## [Unreleased]
 
+## [0.7.0] - The Services on the Local Cluster (2026-11-16)
+
+**runtime and gateway run on the local cluster through Helm charts, reachable at
+`https://gateway.neuromesh.localhost`, and the cluster has a baseline.**
+[#14](https://github.com/kokou-egbewatt/NeuroMesh/issues/14)
+
+### Added
+
+- **`infra/helm/runtime` and `infra/helm/gateway`:** two runtime replicas behind a headless Service and
+  one gateway, certificates from Secrets, grpc and HTTPS probes, measured requests, restricted Pod
+  Security in a `neuromesh` namespace, a `VMServiceScrape` off until there are metrics (#61), and an
+  HTTPRoute with a `BackendTLSPolicy` so the edge re-encrypts to the gateway.
+- **`task svc:up|down|status` and `task image:runtime|gateway`** (`scripts/services.sh`): images built
+  with Docker and imported into k3s's containerd, tagged with the commit; no registry.
+- **`task test:cluster`:** the golden request through the cluster-deployed gateway, against the
+  in-process fixture (`cluster` build tag).
+- **`task bench:cluster`:** the driver as a Job inside the cluster (`benchmarks/inference/Dockerfile`),
+  two runs and the 10% repeatability check. `bench -target` points the driver at any running
+  gateway, and `BASELINE.md` has the cluster section.
+- **`task ci:charts`** and a CI job: every chart lints, renders and validates with kubeconform. Helm
+  4.3.1 and kubeconform 0.8.0 are pinned in `scripts/install-tools.sh`.
+
+### Changed
+
+- **The runtime serves `grpc.health.v1` in plaintext on `health_addr`** (`:8081` in the image) as well,
+  for kubelet's grpc probe, which can't present a client certificate. It answers nothing else and
+  reports NOT_SERVING while the runtime drains.
+- **The edge keeps a client's `X-Request-Id`** (`PreserveOrGenerate`) instead of replacing it.
+- **`docs/onboarding/local-cluster.md`** documents the services, and no longer lists a registry or a
+  relay as missing.
+
 ## [0.6.0] - The Local Edge (2026-11-16)
 
 **Every UI on the local cluster is `https://<name>.neuromesh.localhost` from Windows, with no
