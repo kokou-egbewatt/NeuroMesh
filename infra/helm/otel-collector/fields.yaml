@@ -37,11 +37,24 @@ fields:
   - { name: caller, kind: request, note: client certificate CN }
   - { name: addr, kind: request, note: listen address, startup only }
   - { name: tls, kind: request, note: whether the listener uses TLS, startup only }
+  - { name: chunks, kind: request, note: messages a stream sent }
 
   # OpenTelemetry resource attributes, set by each service's SDK (#10) and by tools such as telemetrygen.
   # The redaction processor applies the list to resource attributes too, so a trace without these
   # would reach Tempo with no service.
   - { name: service.name, kind: resource, note: "the service a span or record comes from" }
+  - { name: service.version, kind: resource, note: "the service's release (SERVICE_VERSION)" }
+
+  # span attributes from otelhttp and otelgrpc (#10). Left out on purpose: client.address,
+  # network.peer.*, user_agent.original (high cardinality), url.path (the raw path; the span name
+  # carries the route template), and the SDK's own telemetry.sdk.* attributes.
+  - { name: http.request.method, kind: request, note: HTTP method on the gateway's server span }
+  - { name: http.response.status_code, kind: request, note: HTTP status on the gateway's server span }
+  - { name: rpc.system.name, kind: request, note: grpc }
+  - { name: rpc.method, kind: request, note: "full gRPC method, e.g. neuromesh.v1.InferenceService/Route" }
+  - { name: rpc.response.status_code, kind: request, note: gRPC status code }
+  - { name: neuromesh.stream.chunks, kind: request, note: messages a stream sent }
+  - { name: neuromesh.stream.first_chunk_ms, kind: request, note: time to the first message of a stream }
 
   # added by the collector from the log file path, then flattened by the gateway
   - { name: k8s_namespace, kind: resource, note: namespace of the pod that wrote the line }

@@ -29,7 +29,14 @@ edge:
   caConfigMap: neuromesh-ca
 
 metrics:
-  enabled: false
+  enabled: true
   port: 9090
   path: /metrics
   interval: 30s
+
+# Spans by OTLP to the collector gateway (infra/helm/otel-collector). Empty turns tracing off.
+otel:
+  endpoint: otel-gateway.observability:4317
+  # The share of new traces kept. Tracing every request cost up to 27% p50 on the stub benchmark at
+  # 64 clients; 10% costs nothing measurable (#10). A client's sampled traceparent is always followed.
+  sampleRatio: "0.1"

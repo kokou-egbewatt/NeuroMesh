@@ -132,7 +132,7 @@ task svc:down
 - **Probes.** The runtime serves `grpc.health.v1` twice: on its mutual-TLS port, and in plaintext on `:8081` (`health_addr`), which only answers the health check, for kubelet's grpc probe, which can't present a client certificate. It reports NOT_SERVING there while it drains on shutdown. The gateway is probed on `/healthz` over HTTPS.
 - **Through the edge.** `https://gateway.neuromesh.localhost` is an HTTPRoute to the gateway's own HTTPS port; a `BackendTLSPolicy` makes the edge open a new TLS connection to it, checking its certificate against the dev CA. The edge keeps a client's `X-Request-Id` (`PreserveOrGenerate`), so the request ID a client sends is the one the services log.
 - **Pod Security** is `restricted` in `neuromesh`: non-root (uid 65532, the distroless user, set numerically because the image names it), read-only root filesystem, no capabilities.
-- **Metrics.** Both charts carry a `VMServiceScrape`, off (`metrics.enabled: false`) until the services expose `/metrics` (#61).
+- **Instrumentation** (#10). Both services export spans to the collector gateway (`OTEL_EXPORTER_OTLP_ENDPOINT`) and serve Prometheus `/metrics` on `:9090`, which vmagent scrapes through each chart's `VMServiceScrape`. One request is one trace: the gateway's HTTP span, its client span, and the runtime's server span as that client span's child. Both services' log lines carry `trace_id` and `span_id` while a span is active, so Grafana joins a trace to its logs. `task test:cluster` checks one request across all three stores.
 
 ## When something is wrong
 

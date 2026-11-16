@@ -24,6 +24,14 @@ spec:
         - name: runtime
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Instrumentation is switched on here, so one image serves every setup (#10).
+          env:
+            - { name: SERVICE_VERSION, value: {{ .Chart.AppVersion | quote }} }
+            - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ .Values.otel.endpoint | quote }} }
+            - { name: OTEL_EXPORTER_OTLP_INSECURE, value: "true" }
+            - { name: OTEL_TRACES_SAMPLER_ARG, value: {{ .Values.otel.sampleRatio | quote }} }
+            - { name: METRICS_ENABLED, value: {{ .Values.metrics.enabled | quote }} }
+            - { name: METRICS_ADDR, value: ":{{ .Values.metrics.port }}" }
           ports:
             - { name: grpc, containerPort: 50051 }
             - { name: health, containerPort: 8081 }
