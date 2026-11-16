@@ -16,6 +16,11 @@ CATALOG='https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}
 API=(--api-versions gateway.networking.k8s.io/v1/HTTPRoute)
 
 failed=0
+# The collector chart carries a copy of the field allow-list (Helm reads only inside a chart).
+if ! diff -q docs/observability/fields.yaml infra/helm/otel-collector/fields.yaml >/dev/null; then
+  echo "❌ infra/helm/otel-collector/fields.yaml differs from docs/observability/fields.yaml: cp the docs one over"
+  failed=1
+fi
 for chart in infra/helm/*/; do
   name=$(basename "$chart")
   [ -f "$chart/Chart.yaml" ] || continue
@@ -23,7 +28,7 @@ for chart in infra/helm/*/; do
   SET=()
   grep -qE "^  tag:" "$chart/values.yaml" 2>/dev/null && SET=(--set image.tag=ci)
   if grep -q '^dependencies:' "$chart/Chart.yaml"; then
-    grep -A3 '^dependencies:' "$chart/Chart.yaml" | sed -n 's/.*repository: *\(https:.*\)/\1/p' | while read -r repo; do
+    sed -n 's/.*repository: *\(https:.*\)/\1/p' "$chart/Chart.yaml" | sort -u | while read -r repo; do
       helm repo add "$(echo "$repo" | md5sum | cut -c1-8)" "$repo" --force-update >/dev/null
     done
     helm dependency build "$chart" >/dev/null
