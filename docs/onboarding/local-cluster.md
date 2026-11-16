@@ -53,6 +53,8 @@ Both lines, always. Each alone fails, and the policy rejects either one with a m
 - **Without `runtimeClassName`:** the pod is scheduled and holds the GPU, reports Running, and has no driver: `libnvidia-ml.so.1: cannot open shared object file`.
 - **Without the request:** the pod gets the GPU without the scheduler knowing. Anything that checks "is the GPU free" by reading allocations is then wrong.
 
+One exception: a **GPU observer**, which reads counters around the clock and computes nothing, may use the RuntimeClass without the request, so it doesn't hold the one `nvidia.com/gpu` workloads need. It must be in the `observability` namespace, carry `neuromesh.dev/gpu-observer: "true"`, be owned by a DaemonSet, and set `NVIDIA_VISIBLE_DEVICES=all`. dcgm-exporter is the only one. `task cluster:status -- -probe` checks that the exception holds and that a bare pod with the label, or the label elsewhere, is still rejected. Measured by difference, dcgm-exporter's VRAM is below the desktop's noise (medians 6969 MiB running, 6985 parked, 7032 running again, 30 to 35 MiB spread): it opens no CUDA context.
+
 ## Why it is built this way
 
 All of this was measured on the reference machine in [infinity-bench #22](https://github.com/kokou-egbewatt/infinity-bench/issues/22) (Windows 11, WSL2, RTX 5060, driver 621.01), which compared k3s, k3d, kind, minikube, Rancher Desktop and both Docker Desktop Kubernetes modes against a probe that must verify a GEMM on the GPU.
@@ -74,6 +76,19 @@ Recorded 2026-10-29 from `kubectl get node gpu-lab -o jsonpath='{.status.allocat
 | Memory | 31.3 GiB (`32867928Ki`; `.wslconfig` `memory=32GB`) |
 | `nvidia.com/gpu` | 1 (`gpu.timeSlicing: 1`) |
 | Distro disk | see `task cluster:status` (k3s adds about 1.8 GB) |
+
+### The observability profile
+
+`task obs:up` installs it (#22; for now the metrics half). Measured 2026-11-16 with `kubectl top` a few minutes after install, idle, at Phase 1 scrape volume:
+
+| | Requests | In use |
+| --- | --- | --- |
+| CPU, whole profile | 380m (3.8% of 10) | about 100m |
+| Memory, whole profile | 1099 MiB (3.4% of 31.3 GiB) | about 1182 MiB |
+| VMSingle | 100m, 256 MiB | 39m, 324 MiB |
+| Ingest | | 3392 samples/s, 11,234 series (kubelet and apiserver are 85% of it; DCGM about 55 per scrape) |
+
+VMSingle keeps 45 days (`retentionPeriod: 45d`). It has no size-based retention, so the bound by bytes is `-storage.minFreeDiskSpaceBytes=5GiB`: below that much free space on the distro it stops ingesting instead of filling the disk, which matters because k3s's local-path storage does not enforce the 10Gi PVC. Even at a pessimistic 1 byte per sample, 45 days at this rate is under 25 GiB, against 943 GB free on the reference distro.
 
 ## When something is wrong
 
