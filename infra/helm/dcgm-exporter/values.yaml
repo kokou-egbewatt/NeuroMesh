@@ -1,0 +1,13 @@
+# dcgm-exporter on the local cluster (#22). It reads the GPU's counters around the clock, so it
+# runs with the nvidia RuntimeClass but requests no nvidia.com/gpu: the one the cluster
+# advertises stays free for workloads. The admission policy lets exactly this shape through,
+# in this namespace, from a DaemonSet, carrying the observer label (infra/kubernetes/gpu/).
+image: nvcr.io/nvidia/k8s/dcgm-exporter:4.2.3-4.1.3-ubuntu22.04
+
+# How often DCGM samples, in ms. vmagent scrapes every scrapeInterval.
+collectIntervalMs: 30000
+scrapeInterval: 30s
+
+resources:
+  requests: { cpu: 20m, memory: 128Mi }
+  limits: { memory: 512Mi }

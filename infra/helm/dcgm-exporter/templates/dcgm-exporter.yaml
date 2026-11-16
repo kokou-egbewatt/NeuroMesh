@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dcgm-exporter-counters
+  labels: { app.kubernetes.io/name: dcgm-exporter, app.kubernetes.io/part-of: neuromesh }
+data:
+  counters.csv: |
+{{ .Files.Get "files/counters.csv" | indent 4 }}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: dcgm-exporter
+  labels: { app.kubernetes.io/name: dcgm-exporter, app.kubernetes.io/part-of: neuromesh }
+spec:
+  selector:
+    matchLabels: { app.kubernetes.io/name: dcgm-exporter }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dcgm-exporter
+        app.kubernetes.io/part-of: neuromesh
+        # The admission policy's exemption: read the GPU without holding nvidia.com/gpu.
+        neuromesh.dev/gpu-observer: "true"
+      annotations:
+        checksum/counters: {{ .Files.Get "files/counters.csv" | sha256sum | trunc 12 }}
+    spec:
+      runtimeClassName: nvidia
+      terminationGracePeriodSeconds: 5
+      containers:
+        - name: dcgm-exporter
+          image: {{ .Values.image }}
+          args: [-f, /etc/dcgm-exporter/custom/counters.csv, -c, "{{ .Values.collectIntervalMs }}"]
+          env:
+            # Without a device request the runtime needs to be told which GPUs to inject.
+            - { name: NVIDIA_VISIBLE_DEVICES, value: all }
+            # One card, no per-pod attribution needed; skips mounting the kubelet's pod-resources socket.
+            - { name: DCGM_EXPORTER_KUBERNETES, value: "false" }
+          ports: [{ name: metrics, containerPort: 9400 }]
+          readinessProbe: { httpGet: { path: /health, port: metrics }, initialDelaySeconds: 10 }
+          securityContext:
+            # DCGM's profiling fields need it; without it they are missing rather than N/A.
+            capabilities: { add: [SYS_ADMIN] }
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts: [{ name: counters, mountPath: /etc/dcgm-exporter/custom }]
+      volumes:
+        - name: counters
+          configMap: { name: dcgm-exporter-counters }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dcgm-exporter
+  labels: { app.kubernetes.io/name: dcgm-exporter, app.kubernetes.io/part-of: neuromesh }
+spec:
+  selector: { app.kubernetes.io/name: dcgm-exporter }
+  ports: [{ name: metrics, port: 9400, targetPort: metrics }]
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: dcgm-exporter
+  labels: { app.kubernetes.io/name: dcgm-exporter, app.kubernetes.io/part-of: neuromesh }
+spec:
+  selector:
+    matchLabels: { app.kubernetes.io/name: dcgm-exporter }
+  endpoints:
+    - port: metrics
+      interval: {{ .Values.scrapeInterval }}
