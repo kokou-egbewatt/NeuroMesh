@@ -8,3 +8,5 @@ metadata:
   labels:
     app.kubernetes.io/part-of: neuromesh
     pod-security.kubernetes.io/enforce: privileged
+    # Its HTTPRoutes may attach to the local edge (infra/helm/edge).
+    neuromesh.dev/edge: "true"

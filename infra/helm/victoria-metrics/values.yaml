@@ -13,6 +13,17 @@ alertSink:
   port: 9095
   image: python:3.13-alpine
 
+# Hostnames on the local edge: <name>.<domain>, served by the Gateway in infra/helm/edge.
+edge:
+  enabled: true
+  domain: neuromesh.localhost
+  gateway: { name: neuromesh-edge, namespace: edge }
+  routes:
+    - { name: grafana, service: vm-grafana, port: 80 }
+    - { name: vmsingle, service: vmsingle-vm, port: 8428 }
+    - { name: vmalert, service: vmalert-vm, port: 8080 }
+    - { name: alertmanager, service: vmalertmanager-vm, port: 9093 }
+
 victoria-metrics-k8s-stack:
   fullnameOverride: vm
 
@@ -123,6 +134,10 @@ victoria-metrics-k8s-stack:
       datasources: []
 
   grafana:
+    # Its public URL, so redirects and links use the edge hostname.
+    grafana.ini:
+      server:
+        root_url: https://grafana.neuromesh.localhost
     resources:
       requests: { cpu: 50m, memory: 128Mi }
       limits: { memory: 384Mi }
