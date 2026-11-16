@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/kokou-egbewatt/NeuroMesh/packages/utils/certgen"
@@ -22,6 +24,14 @@ import (
 var services = map[string][]string{
 	"runtime": {"runtime", "nm-runtime", "localhost", "127.0.0.1", "::1"},
 	"gateway": {"gateway", "nm-gateway", "localhost", "127.0.0.1", "::1"},
+	// The local edge's listener (scripts/edge.sh): every UI on the local cluster is a subdomain of
+	// neuromesh.localhost. The named hosts are listed as well as the wildcard so a client that
+	// distrusts wildcards under a special-use domain still matches.
+	"edge": {
+		"*.neuromesh.localhost", "neuromesh.localhost",
+		"grafana.neuromesh.localhost", "vmsingle.neuromesh.localhost",
+		"vmalert.neuromesh.localhost", "alertmanager.neuromesh.localhost",
+	},
 }
 
 func main() {
@@ -63,8 +73,13 @@ func run(out string, force bool, validFor time.Duration, keyModeStr string) erro
 			return err
 		}
 	}
-	fmt.Printf("wrote %s/ca.crt and %s/{runtime,gateway}/{tls.crt,tls.key,ca.crt}, valid until %s\n",
-		out, out, time.Now().Add(validFor).Format(time.DateOnly))
+	names := make([]string, 0, len(services))
+	for name := range services {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	fmt.Printf("wrote %s/ca.crt and %s/{%s}/{tls.crt,tls.key,ca.crt}, valid until %s\n",
+		out, out, strings.Join(names, ","), time.Now().Add(validFor).Format(time.DateOnly))
 	fmt.Println("the CA private key is not written: re-run with -force to rotate everything")
 	return nil
 }
