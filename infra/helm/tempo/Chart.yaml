@@ -1,0 +1,10 @@
+apiVersion: v2
+name: neuromesh-tempo
+description: Tempo, the trace store of the observability profile (#22) - single binary on local disk, written to only by the collector gateway, read by Grafana.
+type: application
+version: 0.1.0
+appVersion: 2.9.0
+dependencies:
+  - name: tempo
+    version: 1.24.4
+    repository: https://grafana.github.io/helm-charts

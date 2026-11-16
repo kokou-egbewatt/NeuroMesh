@@ -134,6 +134,10 @@ victoria-metrics-k8s-stack:
       datasources: []
 
   grafana:
+    # The VictoriaLogs datasource plugin, fetched from the Grafana catalogue when the pod starts, so a
+    # Grafana restart needs the network. Pinned, so a new plugin release can't change it silently.
+    plugins:
+      - victoriametrics-logs-datasource@0.33.1
     # Its public URL, so redirects and links use the edge hostname.
     grafana.ini:
       server:

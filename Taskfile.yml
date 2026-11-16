@@ -222,6 +222,11 @@ tasks:
     cmds:
       - bash scripts/observability.sh access {{.CLI_ARGS}}
 
+  obs:verify:
+    desc: Logs reach VictoriaLogs, a trace reaches Tempo, and the stores refuse other writers (on the running cluster)
+    cmds:
+      - bash scripts/observability.sh verify
+
   obs:test-rules:
     desc: Unit test the VMRule alert rules with vmalert-tool (in Docker)
     cmds:

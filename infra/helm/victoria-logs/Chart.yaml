@@ -1,0 +1,10 @@
+apiVersion: v2
+name: neuromesh-victoria-logs
+description: VictoriaLogs, the log store of the observability profile (#22) - single binary, written to only by the collector gateway, read by Grafana.
+type: application
+version: 0.1.0
+appVersion: v1.53.0
+dependencies:
+  - name: victoria-logs-single
+    version: 0.13.11
+    repository: https://victoriametrics.github.io/helm-charts

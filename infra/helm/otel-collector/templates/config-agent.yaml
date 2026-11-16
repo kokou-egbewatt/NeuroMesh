@@ -1,0 +1,66 @@
+# The agent's pipeline: pod logs from the node, parsed, forwarded. It runs no redaction; the gateway
+# is the boundary, so the agent stays simple and every node's data meets one rule set.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-agent-config
+  labels: { app.kubernetes.io/part-of: neuromesh }
+data:
+  relay: |
+    receivers:
+      filelog:
+        include: [/var/log/pods/*/*/*.log]
+        # its own lines and the gateway's: an export error would otherwise feed back into the queue
+        exclude:
+          - /var/log/pods/{{ .Release.Namespace }}_otel-agent-*/*/*.log
+          - /var/log/pods/{{ .Release.Namespace }}_otel-gateway-*/*/*.log
+        start_at: end
+        # the container operator reads namespace, pod and container from the path
+        include_file_path: true
+        operators:
+          # containerd's format, partial lines joined, and namespace, pod and container from the path
+          - type: container
+            add_metadata_from_filepath: true
+          # the services log JSON: its keys become attributes the gateway can allow-list
+          - type: json_parser
+            if: 'body matches "^[{]"'
+            parse_to: attributes
+          - type: time_parser
+            if: 'attributes.time != nil'
+            parse_from: attributes.time
+            layout_type: gotime
+            layout: '2006-01-02T15:04:05.999999999Z07:00'
+          - type: severity_parser
+            if: 'attributes.level != nil'
+            parse_from: attributes.level
+          - type: move
+            if: 'attributes.msg != nil'
+            from: attributes.msg
+            to: body
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 80
+        spike_limit_percentage: 20
+      batch:
+        timeout: 5s
+        send_batch_size: 1024
+    exporters:
+      otlp:
+        endpoint: otel-gateway:4317
+        tls: { insecure: true }
+        sending_queue: { queue_size: 1000 }
+    extensions:
+      health_check:
+        endpoint: ${env:MY_POD_IP}:13133
+    service:
+      extensions: [health_check]
+      telemetry:
+        metrics:
+          readers:
+            - pull: { exporter: { prometheus: { host: "${env:MY_POD_IP}", port: 8888 } } }
+      pipelines:
+        logs:
+          receivers: [filelog]
+          processors: [memory_limiter, batch]
+          exporters: [otlp]
