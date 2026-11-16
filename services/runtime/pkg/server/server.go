@@ -37,6 +37,10 @@ type Config struct {
 	MaxRecvMsgBytes int        `yaml:"max_recv_msg_bytes"`
 	Reflection      bool       `yaml:"reflection"`
 	TLS             config.TLS `yaml:"tls"`
+	// HealthAddr, when set, also serves grpc.health.v1 in plaintext there and nothing else, for
+	// probes that can't present a client certificate (kubelet's grpc probe). It reports the same
+	// status as the main port, NOT_SERVING on shutdown included.
+	HealthAddr string `yaml:"health_addr"`
 }
 
 // Defaults fills unset fields.
@@ -59,6 +63,9 @@ type Server struct {
 	grpc   *grpc.Server
 	health *health.Server
 	lis    net.Listener
+	// probe serves only the health service, in plaintext, on HealthAddr; nil when unset.
+	probe    *grpc.Server
+	probeLis net.Listener
 }
 
 // New builds the server. It requires client certificates unless tls.insecure.
@@ -89,15 +96,28 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 		log.Warn("grpc reflection is enabled")
 		reflection.Register(g)
 	}
-	return &Server{cfg: cfg, log: log, grpc: g, health: h}, nil
+	s := &Server{cfg: cfg, log: log, grpc: g, health: h}
+	if cfg.HealthAddr != "" {
+		s.probe = grpc.NewServer(grpc.Creds(insecure.NewCredentials()))
+		healthpb.RegisterHealthServer(s.probe, h)
+	}
+	return s, nil
 }
 
-// Listen binds the configured address. ctx bounds the bind only.
+// Listen binds the configured address, and HealthAddr when set. ctx bounds the bind only.
 func (s *Server) Listen(ctx context.Context) error {
 	var lc net.ListenConfig
 	lis, err := lc.Listen(ctx, "tcp", s.cfg.Addr)
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", s.cfg.Addr, err)
+	}
+	if s.probe != nil {
+		plis, err := lc.Listen(ctx, "tcp", s.cfg.HealthAddr)
+		if err != nil {
+			_ = lis.Close()
+			return fmt.Errorf("listen on health_addr %s: %w", s.cfg.HealthAddr, err)
+		}
+		s.probeLis = plis
 	}
 	s.lis = lis
 	return nil
@@ -105,6 +125,14 @@ func (s *Server) Listen(ctx context.Context) error {
 
 // Addr is the bound address; valid after Listen.
 func (s *Server) Addr() net.Addr { return s.lis.Addr() }
+
+// HealthAddr is the bound plaintext health address, or nil when health_addr is unset.
+func (s *Server) HealthAddr() net.Addr {
+	if s.probeLis == nil {
+		return nil
+	}
+	return s.probeLis.Addr()
+}
 
 // Serve runs until ctx is done, then reports NOT_SERVING, drains in-flight
 // calls for up to ShutdownTimeout, and cuts whatever is left.
@@ -117,6 +145,13 @@ func (s *Server) Serve(ctx context.Context) error {
 	errc := make(chan error, 1)
 	go func() { errc <- s.grpc.Serve(s.lis) }()
 	s.log.Info("runtime listening", "addr", s.lis.Addr().String(), "tls", !s.cfg.TLS.Insecure)
+	if s.probe != nil {
+		go func() { _ = s.probe.Serve(s.probeLis) }()
+		s.log.Info("health listening", "addr", s.probeLis.Addr().String(), "tls", false)
+		// Keep answering NOT_SERVING while the main server drains, so the pod leaves the
+		// endpoints first; stopped last.
+		defer s.probe.Stop()
+	}
 
 	select {
 	case err := <-errc:

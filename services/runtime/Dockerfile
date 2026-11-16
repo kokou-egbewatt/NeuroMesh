@@ -27,7 +27,7 @@ COPY --from=build /out/runtime /runtime
 COPY services/runtime/configs/config.container.yaml /configs/config.yaml
 ENV CONFIG_PATH=/configs/config.yaml
 USER nonroot:nonroot
-EXPOSE 50051
+EXPOSE 50051 8081
 # /certs holds tls.crt, tls.key and ca.crt: a cert-manager Secret on a cluster,
 # `docker cp` of `task certs:dev` output in `task images:smoke`.
 ENTRYPOINT ["/runtime"]

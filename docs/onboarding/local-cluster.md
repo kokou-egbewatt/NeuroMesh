@@ -110,8 +110,27 @@ Recorded 2026-10-29 from `kubectl get node gpu-lab -o jsonpath='{.status.allocat
 
 VMSingle keeps 45 days (`retentionPeriod: 45d`). It has no size-based retention, so the bound by bytes is `-storage.minFreeDiskSpaceBytes=5GiB`: below that much free space on the distro it stops ingesting instead of filling the disk, which matters because k3s's local-path storage does not enforce the 10Gi PVC. Even at a pessimistic 1 byte per sample, 45 days at this rate is under 25 GiB, against 943 GB free on the reference distro.
 
+## The services
+
+`runtime` and `gateway` run in the `neuromesh` namespace from [`infra/helm/runtime`](../../infra/helm/runtime/) and [`infra/helm/gateway`](../../infra/helm/gateway/) (#14):
+
+```sh
+task svc:up         # build both images, import them into k3s, deploy runtime (2 replicas) then gateway
+task svc:status     # pods, and https://gateway.neuromesh.localhost/healthz
+task test:cluster   # the golden request through the cluster, against the in-process fixture
+task bench:cluster  # the route baseline twice against the cluster gateway, checked for repeatability
+task svc:down
+```
+
+- **Images, no registry.** `task image:runtime|gateway` builds with Docker and imports straight into k3s's containerd (`docker save | k3s ctr images import`). The tag is the commit, with `-dirty-<time>` for uncommitted changes, and `pullPolicy: Never`, so every build of different code is a new tag the Deployment rolls to.
+- **Certificates** are Secrets made from `certs/dev/runtime` and `certs/dev/gateway` (`task certs:dev`), mounted at `/certs` where the images' configs expect them. The Services are named `runtime` and `gateway` because those are the names in the certificates and in the gateway's `runtime.server_name`.
+- **Probes.** The runtime serves `grpc.health.v1` twice: on its mutual-TLS port, and in plaintext on `:8081` (`health_addr`), which only answers the health check, for kubelet's grpc probe, which can't present a client certificate. It reports NOT_SERVING there while it drains on shutdown. The gateway is probed on `/healthz` over HTTPS.
+- **Through the edge.** `https://gateway.neuromesh.localhost` is an HTTPRoute to the gateway's own HTTPS port; a `BackendTLSPolicy` makes the edge open a new TLS connection to it, checking its certificate against the dev CA. The edge keeps a client's `X-Request-Id` (`PreserveOrGenerate`), so the request ID a client sends is the one the services log.
+- **Pod Security** is `restricted` in `neuromesh`: non-root (uid 65532, the distroless user, set numerically because the image names it), read-only root filesystem, no capabilities.
+- **Metrics.** Both charts carry a `VMServiceScrape`, off (`metrics.enabled: false`) until the services expose `/metrics` (#61).
+
 ## When something is wrong
 
 `task cluster:status` checks the layers in order: the Windows driver, the keepalive, the distro, systemd, `/dev/dxg`, the toolkit, k3s, the containerd runtime, the node, the RuntimeClass, the device plugin, `nvidia.com/gpu`, the policy, and the kubeconfig context. Fix the first ❌; the ones after it usually follow.
 
-Not built yet (still on #21): the local registry mirror for `task image:*` ([#14](https://github.com/kokou-egbewatt/NeuroMesh/issues/14)), the Windows relay for ports the host reaches, `.wslconfig` sizing, and the CI decision. Until the registry exists, load an image with `wsl -d Ubuntu -u root -- k3s ctr images import <file>.tar`.
+Not built yet (still on #21): `.wslconfig` sizing and the CI decision. There is no registry mirror: `task image:*` builds with Docker and imports into k3s's containerd (#14), and the local edge needs no relay (see [Local hostnames](#local-hostnames)).

@@ -57,6 +57,17 @@ jobs:
           tools: task buf protoc-gen-go protoc-gen-go-grpc
       - run: task ci:proto
 
+  charts:
+    name: Helm charts (lint, template, kubeconform)
+    needs: version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          tools: task helm kubeconform
+      - run: task ci:charts
+
   web:
     name: Web (pnpm workspace)
     needs: version

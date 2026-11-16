@@ -109,8 +109,47 @@ Three things make this table unfit as the reference:
 
 ## Cluster (recorded in #14)
 
-The cluster row is part of [#14](https://github.com/kokou-egbewatt/NeuroMesh/issues/14), the first
-change that runs the services on the local cluster through Helm charts. It adds the node spec
-(`kubectl get node -o wide` and `kubectl describe node`), both charts' resource requests and
-limits, how the driver reaches the gateway, and the commit. The same driver and matrix apply; only
-the target changes.
+The services as deployed by their Helm charts on the local cluster, measured with the same driver
+and matrix from a Job inside the cluster: `task bench:cluster` after `task svc:up`.
+
+- Date: 2026-11-16
+- Commit: `8063063` (images `neuromesh-runtime` and `neuromesh-gateway` tagged `8063063af144`)
+- Node: `gpu-lab`, k3s v1.36.5+k3s1, Ubuntu 24.04.1 in WSL2, kernel 6.6.114.1-microsoft-standard-WSL2,
+  containerd 2.3.4-k3s1.36; allocatable 10 CPU and 31.3 GiB (`.wslconfig`), on the Ryzen 5 8400F
+- Charts: gateway 1 replica, runtime 2 replicas; each requests 50m CPU and 32Mi, limits memory to
+  128Mi, no CPU limit
+- Driver: `neuromesh-bench`, a Job in the `neuromesh` namespace (go1.26.8 linux/amd64, GOMAXPROCS
+  10), calling `https://gateway:8443`, the gateway's ClusterIP Service, over TLS 1.3 verified
+  against the dev CA. The gateway calls the runtime through its headless Service over mutual TLS.
+  The driver shares the node's CPUs with the services, as it shares them in-process.
+- Requests per case: 20000 recorded (at least 1000 per worker) after 2000 warmup
+- Repeatability: second run against the first, every p50 within 6.6%
+
+| Scenario | Concurrency | Requests | p50 (µs) | p95 (µs) | p99 (µs) | max (µs) | req/s | first chunk p50 / p99 (µs) | chunks/s |
+| --- | --: | --: | --: | --: | --: | --: | --: | --: | --: |
+| route | 1 | 20000 | 623.5 | 799.1 | 1044.8 | 9469.7 | 1547 | n/a | n/a |
+| route | 8 | 20000 | 961.3 | 1654.4 | 2177.8 | 5182.9 | 7762 | n/a | n/a |
+| route | 64 | 64000 | 2989.6 | 6247.0 | 8302.9 | 22075.7 | 19440 | n/a | n/a |
+
+No stream rows: the stream case calls the runtime directly, which isn't exposed outside its pods,
+and the gateway has no streaming endpoint until #4.
+
+Against the in-process reference, the cluster costs 1.8 to 2.9 times the p50, for the hop from the
+driver's pod to the gateway's and from the gateway to a runtime pod, each through the cluster
+network instead of loopback.
+
+How much the desktop is doing moves these more than anything in the services. The same commit gave
+a c=64 p50 of 3.0 ms with the machine quiet and 5.1 to 5.6 ms in four earlier sessions with the
+desktop busy, two of which failed the 10% check. Four passes in one session, with the gateway and
+runtime restarted after the second, stayed within 10% of each other, so the services don't slow down
+as they run. Record only on a quiet machine, as the protocol above says.
+
+Two other ways in, not the reference:
+
+- **From Windows through the local edge** (`bench -target https://gateway.neuromesh.localhost`),
+  every request crosses WSL's localhost relay and the edge's Envoy as well. It did not repeat:
+  c=8 drifted 77% and c=64 38% between two runs, and Envoy used up to 2.4 cores. It measures the
+  relay more than the services.
+- **One runtime takes the traffic.** The gateway dials the headless Service with gRPC's default
+  pick-first policy, so it keeps one connection to one runtime pod; during a run one pod's memory
+  grew while the other's stayed flat. Spreading load across replicas is #3.

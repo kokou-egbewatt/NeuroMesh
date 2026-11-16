@@ -8,11 +8,15 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -37,6 +41,9 @@ type Stack struct {
 	CAPEM       []byte
 	// Certs holds the "runtime" and "gateway" leaves, each with the CA.
 	Certs map[string]config.TLS
+	// ServerName is the name the gateway's certificate is checked against; empty means
+	// "localhost", the in-process stack's.
+	ServerName string
 
 	dir         string
 	stopGateway func()
@@ -119,6 +126,26 @@ func Boot(tb testing.TB) *Stack {
 	return s
 }
 
+// Remote is a stack that is already running somewhere else, such as the cluster-deployed gateway
+// behind the local edge (#14): only the gateway's URL and the CA its certificate chains to. The
+// runtime is out of reach, so RuntimeAddr is empty and SDKClient fails; Close does nothing.
+func Remote(gatewayURL string, caPEM []byte) (*Stack, error) {
+	u, err := url.Parse(gatewayURL)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
+		return nil, fmt.Errorf("remote gateway %q: want an https:// URL", gatewayURL)
+	}
+	if !x509.NewCertPool().AppendCertsFromPEM(caPEM) {
+		return nil, errors.New("remote gateway: no certificate in the CA PEM")
+	}
+	return &Stack{
+		GatewayURL:  strings.TrimSuffix(gatewayURL, "/"),
+		CAPEM:       caPEM,
+		ServerName:  u.Hostname(),
+		stopGateway: notStarted,
+		stopRuntime: notStarted,
+	}, nil
+}
+
 // StopRuntime stops the runtime and leaves the gateway up, for tests of the
 // gateway's behavior with its backend gone. It is safe to call more than once.
 func (s *Stack) StopRuntime() { s.stopRuntime() }
@@ -127,6 +154,9 @@ func (s *Stack) StopRuntime() { s.stopRuntime() }
 func (s *Stack) Close() error {
 	s.stopGateway()
 	s.stopRuntime()
+	if s.dir == "" {
+		return nil
+	}
 	return os.RemoveAll(s.dir)
 }
 
@@ -141,8 +171,12 @@ func (s *Stack) HTTPSClient(timeout time.Duration) *http.Client {
 func (s *Stack) Transport(maxIdle int) *http.Transport {
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(s.CAPEM)
+	name := s.ServerName
+	if name == "" {
+		name = "localhost"
+	}
 	return &http.Transport{
-		TLSClientConfig:     &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS13, ServerName: "localhost"},
+		TLSClientConfig:     &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS13, ServerName: name},
 		MaxIdleConns:        maxIdle,
 		MaxIdleConnsPerHost: maxIdle,
 	}
@@ -150,6 +184,9 @@ func (s *Stack) Transport(maxIdle int) *http.Transport {
 
 // SDKClient dials the runtime directly, presenting the gateway's certificate.
 func (s *Stack) SDKClient(opts ...sdk.Option) (*sdk.Client, error) {
+	if s.RuntimeAddr == "" {
+		return nil, errors.New("this stack's runtime is not reachable from here")
+	}
 	clientTLS, err := s.Certs["gateway"].ClientConfig("runtime")
 	if err != nil {
 		return nil, err

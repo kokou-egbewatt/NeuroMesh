@@ -156,6 +156,51 @@ func TestMessageOverLimitIsResourceExhausted(t *testing.T) {
 	}
 }
 
+// The plaintext health port answers the health check and nothing else, and the main port stays
+// mutual TLS only.
+func TestHealthAddrServesOnlyHealthInPlaintext(t *testing.T) {
+	f := newFixture(t)
+	s, err := New(Config{Addr: "127.0.0.1:0", HealthAddr: "127.0.0.1:0", TLS: f.tls(t, "runtime")}, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Listen(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- s.Serve(ctx) }()
+	t.Cleanup(func() { cancel(); <-done })
+
+	probe := dial(t, s.HealthAddr().String(), insecure.NewCredentials())
+	cctx, ccancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer ccancel()
+	resp, err := healthpb.NewHealthClient(probe).Check(cctx, &healthpb.HealthCheckRequest{})
+	if err != nil || resp.GetStatus() != healthpb.HealthCheckResponse_SERVING {
+		t.Fatalf("plaintext health: %v %v, want SERVING", resp, err)
+	}
+	if err := route(probe, "hi"); status.Code(err) != codes.Unimplemented {
+		t.Fatalf("inference on the health port: %v, want Unimplemented", err)
+	}
+	if err := route(dial(t, s.Addr().String(), insecure.NewCredentials()), "hi"); status.Code(err) != codes.Unavailable {
+		t.Fatalf("plaintext on the main port: %v, want Unavailable", err)
+	}
+}
+
+func TestNoHealthAddrByDefault(t *testing.T) {
+	s, err := New(Config{Addr: "127.0.0.1:0", TLS: config.TLS{Insecure: true}}, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Listen(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.lis.Close() }()
+	if s.HealthAddr() != nil {
+		t.Fatalf("health_addr unset but bound %v", s.HealthAddr())
+	}
+}
+
 func TestShutdownFlipsHealthAndStops(t *testing.T) {
 	addr, stop := start(t, Config{TLS: config.TLS{Insecure: true}, ShutdownTimeout: time.Second})
 	conn := dial(t, addr, insecure.NewCredentials())

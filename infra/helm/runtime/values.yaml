@@ -1,0 +1,27 @@
+# services/runtime (#14). scripts/services.sh builds the image, imports it into k3s and sets
+# image.tag to the commit; nothing is pulled from a registry.
+replicaCount: 2
+
+image:
+  repository: neuromesh-runtime
+  tag: ""
+  pullPolicy: Never
+
+# The Secret holding tls.crt, tls.key and ca.crt, mounted at /certs (the image's config expects it
+# there). scripts/services.sh creates it from certs/dev/runtime.
+tlsSecret: runtime-tls
+
+# Measured on the reference machine (docs/onboarding/local-cluster.md#the-services): idle it uses
+# about 1m and 8 to 13 MiB; under the 64-client route benchmark it peaked at 890m and 9 MiB per pod.
+# The request is what it needs to start and serve light traffic; CPU has no limit, so a burst uses
+# idle cores instead of being throttled.
+resources:
+  requests: { cpu: 50m, memory: 32Mi }
+  limits: { memory: 128Mi }
+
+# A VMServiceScrape for /metrics, off until the service exposes metrics (#61).
+metrics:
+  enabled: false
+  port: 9090
+  path: /metrics
+  interval: 30s

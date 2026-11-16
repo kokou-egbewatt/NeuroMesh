@@ -1,0 +1,106 @@
+{{- if not .Values.image.tag }}{{ fail "image.tag is required: scripts/services.sh sets it to the commit it built" }}{{ end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  labels: { app.kubernetes.io/name: gateway, app.kubernetes.io/part-of: neuromesh }
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels: { app.kubernetes.io/name: gateway }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: gateway, app.kubernetes.io/part-of: neuromesh }
+    spec:
+      terminationGracePeriodSeconds: 15
+      securityContext:
+        runAsNonRoot: true
+        # distroless nonroot; the image names the user, which runAsNonRoot can't verify by itself.
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: gateway
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: https, containerPort: 8443 }
+            {{- if .Values.metrics.enabled }}
+            - { name: metrics, containerPort: {{ .Values.metrics.port }} }
+            {{- end }}
+          # /healthz over HTTPS; kubelet doesn't verify the certificate.
+          readinessProbe:
+            httpGet: { path: /healthz, port: https, scheme: HTTPS }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: https, scheme: HTTPS }
+            periodSeconds: 10
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts: [{ name: certs, mountPath: /certs, readOnly: true }]
+      volumes:
+        - name: certs
+          secret: { secretName: {{ .Values.tlsSecret }} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  labels: { app.kubernetes.io/name: gateway, app.kubernetes.io/part-of: neuromesh }
+spec:
+  selector: { app.kubernetes.io/name: gateway }
+  ports:
+    - { name: https, port: 8443, targetPort: https }
+    {{- if .Values.metrics.enabled }}
+    - { name: metrics, port: {{ .Values.metrics.port }}, targetPort: metrics }
+    {{- end }}
+{{- if .Values.metrics.enabled }}
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: gateway
+  labels: { app.kubernetes.io/name: gateway, app.kubernetes.io/part-of: neuromesh }
+spec:
+  selector:
+    matchLabels: { app.kubernetes.io/name: gateway }
+  endpoints:
+    - port: metrics
+      path: {{ .Values.metrics.path }}
+      interval: {{ .Values.metrics.interval }}
+{{- end }}
+{{- if and .Values.edge.enabled (.Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1/HTTPRoute") }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: gateway
+  labels: { app.kubernetes.io/part-of: neuromesh }
+spec:
+  parentRefs:
+    - name: {{ .Values.edge.gateway.name }}
+      namespace: {{ .Values.edge.gateway.namespace }}
+      sectionName: https
+  hostnames: ["gateway.{{ .Values.edge.domain }}"]
+  rules:
+    - matches: [{ path: { type: PathPrefix, value: / } }]
+      backendRefs: [{ name: gateway, port: 8443 }]
+---
+# The gateway only speaks HTTPS, so the edge re-encrypts, checking the gateway's certificate.
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: gateway
+  labels: { app.kubernetes.io/part-of: neuromesh }
+spec:
+  targetRefs:
+    - { group: "", kind: Service, name: gateway, sectionName: https }
+  validation:
+    hostname: gateway
+    caCertificateRefs:
+      - { group: "", kind: ConfigMap, name: {{ .Values.edge.caConfigMap }} }
+{{- end }}
