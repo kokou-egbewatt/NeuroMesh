@@ -6,6 +6,8 @@ log_format: json
 shutdown_timeout: 10s
 max_recv_msg_bytes: 8388608
 reflection: false
+# Plaintext grpc.health.v1 only, for kubelet's grpc probe, which can't present a client certificate.
+health_addr: ":8081"
 tls:
   cert_file: /certs/tls.crt
   key_file: /certs/tls.key
