@@ -1,0 +1,17 @@
+# The local edge (scripts/edge.sh; docs/onboarding/local-cluster.md#local-hostnames).
+#
+# Every UI is <name>.neuromesh.localhost. *.localhost resolves to loopback by standard (RFC 6761) in
+# browsers and curl, so there is no hosts file. Envoy binds 443 on the node's own network, and WSL2
+# forwards localhost:443 on Windows to it, the same path the kubeconfig's localhost:6443 takes.
+domain: neuromesh.localhost
+
+# The Secret scripts/edge.sh creates from certs/dev/edge (the dev CA, trusted by task certs:trust).
+tlsSecret: edge-tls
+
+# Namespaces whose HTTPRoutes may attach carry this label.
+routeNamespaceLabel: neuromesh.dev/edge
+
+envoy:
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { memory: 256Mi }

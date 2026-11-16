@@ -1,0 +1,77 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: neuromesh
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: neuromesh-edge
+    namespace: {{ .Release.Namespace }}
+---
+# How the proxy runs. On the node's network, so its listener is a real socket on :443 that WSL2's
+# localhost forwarding carries to Windows; a LoadBalancer through servicelb would be iptables rules,
+# which the forwarding does not see. As root with NET_BIND_SERVICE added back: Envoy Gateway drops
+# every capability, a non-root process can't bind 443, and an added capability only takes effect
+# for root under containerd.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: neuromesh-edge
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      # Bind 443 itself, not the 10443 Envoy Gateway shifts privileged ports to by default.
+      useListenerPortAsContainerPort: true
+      envoyService:
+        type: ClusterIP
+      envoyDeployment:
+        replicas: 1
+        # On the node's network two proxies would collide on their ports, so replace, never overlap.
+        strategy:
+          type: Recreate
+        container:
+          resources: {{- toYaml .Values.envoy.resources | nindent 12 }}
+        patch:
+          type: StrategicMerge
+          value:
+            spec:
+              template:
+                spec:
+                  hostNetwork: true
+                  dnsPolicy: ClusterFirstWithHostNet
+                  securityContext:
+                    runAsUser: 0
+                    runAsNonRoot: false
+                  containers:
+                    - name: envoy
+                      securityContext:
+                        runAsUser: 0
+                        runAsNonRoot: false
+                        # Envoy Gateway drops every capability; root still needs this one for :443.
+                        capabilities:
+                          add: [NET_BIND_SERVICE]
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: neuromesh-edge
+spec:
+  gatewayClassName: neuromesh
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "*.{{ .Values.domain }}"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: {{ .Values.tlsSecret }}
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              {{ .Values.routeNamespaceLabel }}: "true"

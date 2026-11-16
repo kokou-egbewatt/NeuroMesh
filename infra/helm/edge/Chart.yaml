@@ -1,0 +1,6 @@
+apiVersion: v2
+name: neuromesh-edge
+description: The local edge - one Envoy Gateway listener on 443 for *.neuromesh.localhost, so every UI on the local cluster has a hostname from Windows with no port-forward or relay.
+type: application
+version: 0.1.0
+appVersion: v1.9.3
