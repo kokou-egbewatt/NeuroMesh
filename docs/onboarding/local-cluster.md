@@ -66,6 +66,26 @@ All of this was measured on the reference machine in [infinity-bench #22](https:
 - **The kubeconfig uses `localhost`.** WSL forwards it to the distro, so Windows `kubectl` does not depend on the node IP that changes on every WSL restart.
 - **No VRAM is held by the cluster itself:** a CUDA context is 113 MiB on this card, and none of the cluster components open one.
 
+## Local hostnames
+
+Every UI on the cluster is `https://<name>.neuromesh.localhost`, from a browser or curl on Windows, with no port-forward, relay or hosts file. Issues: [#21](https://github.com/kokou-egbewatt/NeuroMesh/issues/21) (the relay it turned out not to need) and [#23](https://github.com/kokou-egbewatt/NeuroMesh/issues/23) (ingress: Envoy Gateway).
+
+```sh
+task certs:dev -- -force   # once: mint the dev CA again, now with the edge certificate
+task certs:trust           # once per new CA: trust it for this Windows user (a Windows prompt)
+task edge:up               # Envoy Gateway, the Gateway on :443, and the profile's routes
+task edge:status           # every routed hostname over HTTPS from this machine
+task obs:access            # the URLs and logins
+```
+
+- **Names.** `*.localhost` resolves to loopback by standard (RFC 6761) in browsers and curl, so a new UI needs a route, not a DNS entry. Windows' own resolver doesn't follow that rule, so PowerShell's `Invoke-WebRequest` can't reach these names; browsers and curl can.
+- **The path.** Envoy runs on the node's network and binds `:443` itself, so its listener is a real socket in the distro, and WSL2's localhost forwarding carries `127.0.0.1:443` on Windows to it: the same path the kubeconfig's `localhost:6443` takes. A LoadBalancer Service through servicelb would be iptables rules, which the forwarding does not see, and is why the other route to these UIs would have needed a relay process.
+- **Root.** The proxy runs as root with `NET_BIND_SERVICE` added back, because Envoy Gateway drops every capability and a non-root process can't bind 443. It replaces itself on upgrade instead of rolling, since two proxies on the node's network collide on their ports.
+- **TLS.** One listener for `*.neuromesh.localhost`, with the `edge` certificate from the dev CA. The CA lives 90 days; when it is minted again, run `task certs:trust` again. Windows curl needs `--ssl-no-revoke` with it, because schannel asks for a revocation list a dev CA doesn't publish; browsers treat that as soft.
+- **After a restart** it comes back on its own. Measured with `wsl --terminate Ubuntu`: the keepalive restarts the distro, Envoy binds `:443` again after about a minute, and every hostname answered within about 3 minutes, Grafana last. A `FAIL` from `task edge:status` in the first minutes is the backends still starting.
+- **Port 443 on Windows** must be free. Anything else bound to `127.0.0.1:443` takes the traffic instead, and `task edge:status` reports every name as unreachable.
+- **A chart opts in** with an HTTPRoute whose parent is the Gateway `edge/neuromesh-edge`, section `https`, in a namespace labelled `neuromesh.dev/edge: "true"`. Render it only when `.Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1/HTTPRoute"`, so the chart still installs without the edge, as `infra/helm/victoria-metrics/templates/routes.yaml` does.
+
 ## Reference machine
 
 Recorded 2026-10-29 from `kubectl get node gpu-lab -o jsonpath='{.status.allocatable}'`. These figures come from the machine and its `.wslconfig`; nothing in charts or tooling may hardcode them.

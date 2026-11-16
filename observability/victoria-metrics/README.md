@@ -19,7 +19,7 @@ task obs:down        # uninstall; CRDs and the namespace stay
 | Alerts (vmalert) | `vmalert.neuromesh.localhost` | `/vmalert/alerts` (without `/vmalert/`, vmalert answers 400) | `http://vmalert-vm:8080` |
 | Alertmanager | `alertmanager.neuromesh.localhost` | `/#/alerts` | `http://vmalertmanager-vm:9093` |
 
-The hostnames are served through the local edge, which is the next piece of work. Until it lands, every UI answers inside the cluster only, and `task obs:access` says "not routed yet" for each: it lists a hostname as reachable only once an HTTPRoute serves it. `*.localhost` resolves to `127.0.0.1` by standard, so there is no hosts file to edit.
+The hostnames are served by the local edge (`task edge:up`; [Local hostnames](../../docs/onboarding/local-cluster.md#local-hostnames)) over HTTPS, with the dev CA that `task certs:trust` trusts. The chart renders its HTTPRoutes only when the cluster has the Gateway API, and `task obs:access` lists a hostname as reachable only once a route serves it, so without the edge every UI says "not routed yet" and answers inside the cluster only.
 
 `task obs:access` also writes the whole sheet, passwords included, to `~/.neuromesh/access.md`. Grafana is the only UI with a login. The user is `admin`; the password is random per install, kept in the Secret `observability/vm-grafana`, so it survives `task obs:up` and differs between machines. Straight from the Secret:
 
@@ -36,4 +36,3 @@ kubectl -n observability get secret vm-grafana -o jsonpath='{.data.admin-passwor
 - **Retention.** 45 days, with a free-space floor instead of a size limit, which VMSingle does not have. The numbers are in [Local cluster](../../docs/onboarding/local-cluster.md#the-observability-profile).
 - **Alerts.** Rules are plain rule groups in `infra/helm/victoria-metrics/files/rules/`, wrapped into `VMRule`s by the chart and unit tested by [`tests/`](tests/) with `vmalert-tool unittest`. vmalert evaluates them and Alertmanager routes everything to the alert sink, a pod that writes each alert as one JSON line on stdout, until there is a pager.
 - **Deploy needs the network.** The stack's sync job fetches its default rules and dashboards from upstream at install time.
-
