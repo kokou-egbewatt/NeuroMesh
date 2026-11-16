@@ -1,0 +1,38 @@
+# VictoriaLogs on the local cluster (#22). scripts/observability.sh installs it; the collector gateway
+# (infra/helm/otel-collector) is the only writer, and NetworkPolicy below keeps it that way.
+
+victoria-logs-single:
+  fullnameOverride: victorialogs
+  server:
+    # 7 days, and never more than 4 GiB on disk, whichever comes first: k3s's local-path storage
+    # does not enforce the PVC size, so the byte cap is what protects the distro's disk.
+    retentionPeriod: 7d
+    retentionDiskSpaceUsage: 4
+    persistentVolume:
+      enabled: true
+      size: 5Gi
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { memory: 512Mi }
+    # vmagent scrapes it like any other service.
+    vmServiceScrape:
+      enabled: true
+  vector:
+    enabled: false
+  dashboards:
+    enabled: false
+
+# Who may connect to :9428, which serves both insert and query: the collector gateway writes, Grafana
+# and the edge read, vmagent scrapes. Everything else is refused (the adversarial check in
+# observability/victoria-logs/README.md).
+networkPolicy:
+  enabled: true
+  # The node's InternalIP, for the edge; scripts/observability.sh sets it from the cluster, since it
+  # changes when WSL restarts. Empty means the UI is not reachable through the edge.
+  nodeIP: ""
+
+# https://victorialogs.<domain>/select/vmui/ through the local edge.
+edge:
+  enabled: true
+  domain: neuromesh.localhost
+  gateway: { name: neuromesh-edge, namespace: edge }

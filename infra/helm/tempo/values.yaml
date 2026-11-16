@@ -1,0 +1,29 @@
+# Tempo on the local cluster (#22). scripts/observability.sh installs it; the collector gateway is the
+# only writer, over OTLP. Local disk: there is no object store on this cluster yet.
+
+tempo:
+  fullnameOverride: tempo
+  tempo:
+    # 3 days. Tempo has no size-based retention; the bound by bytes is the PVC with local-path's
+    # caveat (not enforced), so the volume of traces is measured in docs/onboarding/local-cluster.md.
+    retention: 72h
+    reportingEnabled: false
+    storage:
+      trace:
+        backend: local
+        local: { path: /var/tempo/traces }
+        wal: { path: /var/tempo/wal }
+    # Service graphs and span metrics come with the service instrumentation (#10, #65).
+    metricsGenerator:
+      enabled: false
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { memory: 1Gi }
+  persistence:
+    enabled: true
+    size: 5Gi
+
+# Who may connect: the collector gateway writes OTLP (4317, 4318), Grafana queries (3200), vmagent
+# scrapes (3200). Everything else is refused.
+networkPolicy:
+  enabled: true
