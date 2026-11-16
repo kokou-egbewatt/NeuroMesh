@@ -45,5 +45,5 @@ func New(w io.Writer, service, level, format string) (*slog.Logger, error) {
 	default:
 		return nil, fmt.Errorf("logging: unknown format %q (want json or text)", format)
 	}
-	return slog.New(h).With("service", service), nil
+	return slog.New(traceHandler{h}).With("service", service), nil
 }
