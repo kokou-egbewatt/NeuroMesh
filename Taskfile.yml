@@ -148,6 +148,24 @@ tasks:
     cmds:
       - go run ./tools/cluster delete {{.CLI_ARGS}}
 
+  # ---------------------------------------------------------------- edge
+  # The local edge (#21, #23): every UI on the local cluster at https://<name>.neuromesh.localhost,
+  # with no port-forward, relay or hosts file. docs/onboarding/local-cluster.md#local-hostnames.
+  edge:up:
+    desc: Install or upgrade the local edge (Envoy Gateway on :443 for *.neuromesh.localhost)
+    cmds:
+      - bash scripts/edge.sh up
+
+  edge:down:
+    desc: Uninstall the local edge; the UIs keep running, without hostnames
+    cmds:
+      - bash scripts/edge.sh down
+
+  edge:status:
+    desc: Whether every routed hostname answers over HTTPS from this machine
+    cmds:
+      - bash scripts/edge.sh status
+
   # ---------------------------------------------------------------- observability
   # The observability profile on the local cluster (#22): for now the metrics half, the
   # VictoriaMetrics stack and dcgm-exporter. observability/victoria-metrics/README.md explains it.

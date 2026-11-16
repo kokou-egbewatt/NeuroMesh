@@ -9,6 +9,31 @@ enforces it and `task ci:changelog` checks the file's structure.
 
 ## [Unreleased]
 
+## [0.6.0] - The Local Edge (2026-11-16)
+
+**Every UI on the local cluster is `https://<name>.neuromesh.localhost` from Windows, with no
+port-forward, relay or hosts file.** Settles the ingress question in
+[#23](https://github.com/kokou-egbewatt/NeuroMesh/issues/23) (Envoy Gateway) and the Windows relay
+in [#21](https://github.com/kokou-egbewatt/NeuroMesh/issues/21), which turned out not to be needed.
+
+### Added
+
+- **`task edge:up|down|status`** (`scripts/edge.sh`): Envoy Gateway v1.9.3 with the Gateway API, and
+  `infra/helm/edge/`, one Gateway listening on 443 for `*.neuromesh.localhost`. The proxy runs on the
+  node's network, so WSL2's localhost forwarding carries `127.0.0.1:443` on Windows to it, the same
+  path the kubeconfig's `localhost:6443` takes. `edge:status` checks each routed hostname over HTTPS
+  from the machine, against the dev CA.
+- **HTTPRoutes for Grafana, VMSingle, vmalert and Alertmanager**, rendered only when the cluster has
+  the Gateway API, so the metrics profile still installs without the edge. Grafana's `root_url` is
+  its hostname, and `task obs:access` now prints real URLs.
+- **An `edge` certificate** from the dev CA (`task certs:dev`) for the wildcard and each UI's name.
+
+### Changed
+
+- **`task certs:dev`** reports the certificates it actually wrote.
+- **`docs/onboarding/local-cluster.md`** explains the hostnames: why no relay, why the proxy is root,
+  the one-time certificate step, and how a chart opts in.
+
 ## [0.5.0] - Metrics on the Local Cluster (2026-11-16)
 
 **The metrics half of the observability profile runs on the local cluster, and the GPU is in it.**
