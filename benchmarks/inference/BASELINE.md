@@ -153,3 +153,27 @@ Two other ways in, not the reference:
 - **One runtime takes the traffic.** The gateway dials the headless Service with gRPC's default
   pick-first policy, so it keeps one connection to one runtime pod; during a run one pod's memory
   grew while the other's stayed flat. Spreading load across replicas is #3.
+
+## Instrumentation overhead (recorded in #10)
+
+What tracing and metrics add to the stub path, measured in the reference container with one build of
+the driver, instrumentation off against `bench -instrumented` (every span built, batched and
+dropped by a no-op exporter; metrics on in both services). Two rounds each, alternated, on
+2026-11-16; p50 change against off, averaged:
+
+| p50 | metrics only | tracing 10% + metrics | tracing 100% + metrics |
+| --- | --: | --: | --: |
+| route c=1 | +1% | 0% | +6% |
+| route c=8 | -1% | -11% (noise) | +4% |
+| route c=64 | +4% | +0.3% | +27% |
+| stream c=1 | -1% | -2% | -2% |
+| stream c=8 | -2% | -2% | +2% |
+
+Metrics cost nothing measurable. Tracing every request does, under concurrency: three spans per
+request through one batching queue at about 40,000 requests a second. The services therefore keep
+10% of new traces (`OTEL_TRACES_SAMPLER_ARG`), within the 5% budget everywhere, and always follow a
+client's sampled `traceparent`, which is how the cluster test traces its own request.
+
+An earlier comparison of `main` against this branch, two rounds each, moved more between two
+runs of the same build (route c=64: 1307 and 2326 µs) than between the builds, which is why the
+numbers above come from one binary.

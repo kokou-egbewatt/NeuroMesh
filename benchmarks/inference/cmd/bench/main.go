@@ -23,9 +23,14 @@ import (
 	"time"
 
 	"github.com/klauspost/cpuid/v2"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/kokou-egbewatt/NeuroMesh/benchmarks/inference"
 	"github.com/kokou-egbewatt/NeuroMesh/packages/logging"
+	"github.com/kokou-egbewatt/NeuroMesh/packages/tracing"
 	"github.com/kokou-egbewatt/NeuroMesh/test/integration/harness"
 )
 
@@ -69,6 +74,8 @@ func run() error {
 	tolerance := flag.Float64("tolerance", 0.10, "p50 drift -compare accepts")
 	target := flag.String("target", "", "an already running gateway, such as https://gateway.neuromesh.localhost, instead of booting one in-process; only the route cases run, the runtime being out of reach")
 	caPath := flag.String("ca", "certs/dev/ca.crt", "with -target: the CA the gateway's certificate chains to")
+	traceRatio := flag.Float64("trace-ratio", 1, "with -instrumented: the share of requests traced; 0 traces none, so only metrics are on")
+	instrumented := flag.Bool("instrumented", false, "in-process only: trace every request (batched, then discarded) and record metrics in both services, to measure the instrumentation's cost (#10)")
 	flag.Parse()
 
 	if *compare != "" {
@@ -93,8 +100,21 @@ func run() error {
 		if stack, err = harness.Remote(*target, caPEM); err != nil {
 			return err
 		}
-	} else if stack, err = harness.Start(ctx, harness.Options{Logger: log}); err != nil {
-		return err
+	} else {
+		if *instrumented && *traceRatio > 0 {
+			// Everything the services do when deployed, short of the network: every span is built,
+			// batched and handed to an exporter, which drops it.
+			tp, err := tracing.NewProvider("bench", "bench", *traceRatio, sdktrace.WithBatcher(tracetest.NewNoopExporter()))
+			if err != nil {
+				return err
+			}
+			defer func() { _ = tp.Shutdown(context.Background()) }()
+			otel.SetTracerProvider(tp)
+			otel.SetTextMapPropagator(propagation.TraceContext{})
+		}
+		if stack, err = harness.Start(ctx, harness.Options{Logger: log, Metrics: *instrumented}); err != nil {
+			return err
+		}
 	}
 	defer func() { _ = stack.Close() }()
 
@@ -102,6 +122,9 @@ func run() error {
 	meta.Target = *target
 	if meta.Target == "" {
 		meta.Target = "in-process"
+		if *instrumented {
+			meta.Target = fmt.Sprintf("in-process, instrumented (metrics, %g of requests traced)", *traceRatio)
+		}
 	}
 	fmt.Fprintf(os.Stderr, "bench: %s on %s, %d logical CPUs, commit %s, target %s\n", meta.GoVersion, meta.CPU, meta.LogicalCPU, meta.Commit, meta.Target)
 
