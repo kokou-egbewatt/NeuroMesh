@@ -53,3 +53,6 @@ Thumbs.db
 
 # `task bench` output; the recorded baseline is benchmarks/inference/BASELINE.md.
 /benchmarks/inference/results/
+
+# Helm dependencies: Chart.lock is committed, the fetched charts are not (helm dependency build)
+infra/helm/*/charts/

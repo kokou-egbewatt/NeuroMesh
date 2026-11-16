@@ -1,0 +1,26 @@
+# Platform alert rules, in plain rule-group form so vmalert-tool can unit test them
+# (observability/victoria-metrics/tests/). templates/rules.yaml wraps each file in a VMRule.
+groups:
+  - name: neuromesh.gpu
+    rules:
+      - alert: DCGMExporterDown
+        expr: up{job="dcgm-exporter"} == 0 or absent(up{job="dcgm-exporter"})
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: dcgm-exporter has not been scraped for 5 minutes, so GPU metrics have a gap.
+          runbook: kubectl -n observability logs ds/dcgm-exporter
+      - alert: GPUHot
+        expr: DCGM_FI_DEV_GPU_TEMP > 85
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: The GPU has been above 85 °C for 5 minutes ({{ $value }} °C).
+  - name: neuromesh.services
+    rules:
+      - alert: NeuroMeshServiceDown
+        expr: up{namespace="neuromesh"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.job }} has failed its scrape for 2 minutes."

@@ -1,0 +1,10 @@
+# The observability profile's namespace (#22). Privileged, because node-exporter reads the host's
+# /proc, /sys and network namespace, and dcgm-exporter needs SYS_ADMIN for DCGM's profiling fields.
+# The GPU admission policy names this namespace for its observer exemption.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  labels:
+    app.kubernetes.io/part-of: neuromesh
+    pod-security.kubernetes.io/enforce: privileged

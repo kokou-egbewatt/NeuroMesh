@@ -1,0 +1,41 @@
+{
+  "uid": "neuromesh-platform-status",
+  "title": "Platform status",
+  "description": "One row per scraped NeuroMesh and observability target, up or down (#22).",
+  "tags": ["neuromesh"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "type": "stat", "title": "Targets down", "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } } },
+      "targets": [{ "refId": "A", "expr": "count(up{namespace=~\"neuromesh|observability\"} == 0) or vector(0)" }]
+    },
+    {
+      "type": "stat", "title": "Alerts firing", "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 1 }] } } },
+      "targets": [{ "refId": "A", "expr": "count(ALERTS{alertstate=\"firing\", alertname!=\"Watchdog\"}) or vector(0)" }]
+    },
+    {
+      "type": "table", "title": "Targets", "gridPos": { "x": 0, "y": 4, "w": 24, "h": 14 },
+      "datasource": { "type": "prometheus", "uid": "victoriametrics" },
+      "targets": [{ "refId": "A", "expr": "max by (namespace, job) (up{namespace=~\"neuromesh|observability\"})", "instant": true, "format": "table" }],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [{
+          "matcher": { "id": "byName", "options": "Value" },
+          "properties": [
+            { "id": "displayName", "value": "status" },
+            { "id": "mappings", "value": [{ "type": "value", "options": { "0": { "text": "down", "color": "red" }, "1": { "text": "up", "color": "green" } } }] },
+            { "id": "custom.cellOptions", "value": { "type": "color-background" } }
+          ]
+        }]
+      },
+      "transformations": [{ "id": "organize", "options": { "excludeByName": { "Time": true } } }]
+    }
+  ]
+}
