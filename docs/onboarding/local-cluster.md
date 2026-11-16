@@ -99,16 +99,21 @@ Recorded 2026-10-29 from `kubectl get node gpu-lab -o jsonpath='{.status.allocat
 
 ### The observability profile
 
-`task obs:up` installs it (#22; for now the metrics half). Measured 2026-11-16 with `kubectl top` a few minutes after install, idle, at Phase 1 scrape volume:
+`task obs:up` installs it (#22): metrics, logs and traces. Measured 2026-11-16 with `kubectl top`, idle, at Phase 1 volume (the services running, no load):
 
 | | Requests | In use |
 | --- | --- | --- |
-| CPU, whole profile | 380m (3.8% of 10) | about 100m |
-| Memory, whole profile | 1099 MiB (3.4% of 31.3 GiB) | about 1182 MiB |
+| CPU, whole profile | 530m (5.3% of 10) | about 133m |
+| Memory, whole profile | 1483 MiB (4.6% of 31.3 GiB) | about 1695 MiB |
 | VMSingle | 100m, 256 MiB | 39m, 324 MiB |
+| VictoriaLogs | 50m, 128 MiB | 4m, 22 MiB |
+| Tempo | 50m, 128 MiB | 4m, 52 MiB |
+| Collector agent, gateway | 25m and 64 MiB each | 21m and 90 MiB, 2m and 53 MiB |
 | Ingest | | 3392 samples/s, 11,234 series (kubelet and apiserver are 85% of it; DCGM about 55 per scrape) |
 
 VMSingle keeps 45 days (`retentionPeriod: 45d`). It has no size-based retention, so the bound by bytes is `-storage.minFreeDiskSpaceBytes=5GiB`: below that much free space on the distro it stops ingesting instead of filling the disk, which matters because k3s's local-path storage does not enforce the 10Gi PVC. Even at a pessimistic 1 byte per sample, 45 days at this rate is under 25 GiB, against 943 GB free on the reference distro.
+
+VictoriaLogs keeps 7 days or 4 GiB, whichever comes first (`retentionDiskSpaceUsage`), a real byte cap. Tempo keeps 72 hours and, like VMSingle, has no size-based retention; its bound is time. Both use local-path volumes, which don't enforce their 5Gi.
 
 ## The services
 
@@ -132,5 +137,7 @@ task svc:down
 ## When something is wrong
 
 `task cluster:status` checks the layers in order: the Windows driver, the keepalive, the distro, systemd, `/dev/dxg`, the toolkit, k3s, the containerd runtime, the node, the RuntimeClass, the device plugin, `nvidia.com/gpu`, the policy, and the kubeconfig context. Fix the first ❌; the ones after it usually follow.
+
+NetworkPolicy is enforced (k3s's embedded kube-router) and recognises a new pod a few seconds after it starts: until then a policy that should admit it refuses it, quickly, with "connection refused". A pod that connects the moment it starts can hit that window; retry, or wait a few seconds before the first call.
 
 Not built yet (still on #21): `.wslconfig` sizing and the CI decision. There is no registry mirror: `task image:*` builds with Docker and imports into k3s's containerd (#14), and the local edge needs no relay (see [Local hostnames](#local-hostnames)).

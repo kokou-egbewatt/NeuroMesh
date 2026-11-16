@@ -6,6 +6,7 @@ VictoriaMetrics is the metrics store: the `victoria-metrics-k8s-stack` chart (op
 task obs:up          # install or upgrade the profile (idempotent)
 task obs:status      # pods, and every scrape target up or down
 task obs:access      # hostnames, paths and logins (passwords masked; -- --show prints them)
+task obs:verify      # logs reach VictoriaLogs, a trace reaches Tempo, the stores refuse other writers
 task obs:test-rules  # unit test the alert rules
 task obs:down        # uninstall; CRDs and the namespace stay
 ```
@@ -18,6 +19,7 @@ task obs:down        # uninstall; CRDs and the namespace stay
 | Metrics (vmui) | `vmsingle.neuromesh.localhost` | `/vmui/` | `http://vmsingle-vm:8428` |
 | Alerts (vmalert) | `vmalert.neuromesh.localhost` | `/vmalert/alerts` (without `/vmalert/`, vmalert answers 400) | `http://vmalert-vm:8080` |
 | Alertmanager | `alertmanager.neuromesh.localhost` | `/#/alerts` | `http://vmalertmanager-vm:9093` |
+| Logs (vmui) | `victorialogs.neuromesh.localhost` | `/select/vmui/` | `http://victorialogs-server:9428` |
 
 The hostnames are served by the local edge (`task edge:up`; [Local hostnames](../../docs/onboarding/local-cluster.md#local-hostnames)) over HTTPS, with the dev CA that `task certs:trust` trusts. The chart renders its HTTPRoutes only when the cluster has the Gateway API, and `task obs:access` lists a hostname as reachable only once a route serves it, so without the edge every UI says "not routed yet" and answers inside the cluster only.
 
