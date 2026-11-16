@@ -1,0 +1,38 @@
+{{- if .Values.networkPolicy.enabled }}
+# The gateway takes OTLP from the agent and from the services, nothing else. The stores' own
+# policies (infra/helm/victoria-logs, infra/helm/tempo) admit only the gateway as a writer.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: otel-gateway
+  labels: { app.kubernetes.io/part-of: neuromesh }
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: otel-gateway }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app.kubernetes.io/name: otel-agent } }
+        {{- range .Values.networkPolicy.serviceNamespaces }}
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ . }} } }
+        {{- end }}
+      ports: [{ port: 4317, protocol: TCP }, { port: 4318, protocol: TCP }]
+    # vmagent scrapes the collector's own metrics, kubelet probes health
+    - from:
+        - podSelector: { matchLabels: { app.kubernetes.io/name: vmagent } }
+      ports: [{ port: 8888, protocol: TCP }]
+    - ports: [{ port: 13133, protocol: TCP }]
+{{- end }}
+---
+# The collectors' own metrics (queue sizes, refused and dropped records, redaction counts).
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMPodScrape
+metadata:
+  name: otel-collector
+  labels: { app.kubernetes.io/part-of: neuromesh }
+spec:
+  selector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: In, values: [otel-agent, otel-gateway] }
+  podMetricsEndpoints:
+    - port: metrics

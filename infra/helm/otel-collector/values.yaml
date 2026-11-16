@@ -1,0 +1,67 @@
+# The collector on the local cluster (#22). scripts/observability.sh installs it.
+#
+#   pod stdout -> /var/log/pods -> agent (filelog, parse, forward)
+#                                    -> gateway (normalise, redact to fields.yaml) -> VictoriaLogs
+#   services' OTLP (#10)          ----> gateway --------------------------------- -> Tempo
+#
+# Both run the contrib distribution: the redaction processor isn't in the k8s one. Each pipeline is in
+# templates/, not in these values, so it reads as one config.
+
+# The stores, in this namespace.
+victorialogs: http://victorialogs-server:9428
+tempo: tempo:4317
+
+agent:
+  mode: daemonset
+  fullnameOverride: otel-agent
+  nameOverride: otel-agent
+  image:
+    repository: otel/opentelemetry-collector-contrib
+  configMap:
+    create: false
+    existingName: otel-agent-config
+  # Mounts /var/log/pods read-only; the pipeline itself is templates/config-agent.yaml.
+  presets:
+    logsCollection:
+      enabled: true
+  # k3s writes pod logs readable by root only.
+  securityContext:
+    runAsUser: 0
+    runAsGroup: 0
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { memory: 256Mi }
+  ports:
+    jaeger-compact: { enabled: false }
+    jaeger-thrift: { enabled: false }
+    jaeger-grpc: { enabled: false }
+    zipkin: { enabled: false }
+    otlp: { enabled: false }
+    otlp-http: { enabled: false }
+    # the collector's own metrics, scraped by vmagent (VMPodScrape in templates/policy-and-scrape.yaml)
+    metrics: { enabled: true }
+
+gateway:
+  mode: deployment
+  replicaCount: 1
+  fullnameOverride: otel-gateway
+  nameOverride: otel-gateway
+  image:
+    repository: otel/opentelemetry-collector-contrib
+  configMap:
+    create: false
+    existingName: otel-gateway-config
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { memory: 384Mi }
+  ports:
+    jaeger-compact: { enabled: false }
+    jaeger-thrift: { enabled: false }
+    jaeger-grpc: { enabled: false }
+    zipkin: { enabled: false }
+    metrics: { enabled: true }
+
+# Who may send to the gateway: the agent, and services in the neuromesh namespace (OTLP, #10).
+networkPolicy:
+  enabled: true
+  serviceNamespaces: [neuromesh]

@@ -1,0 +1,49 @@
+# The telemetry field allow-list (#22): every attribute a log line, span or metric may carry past the
+# collector gateway, which is the redaction boundary. A key that isn't here is dropped there, and
+# counted. infra/helm/otel-collector/fields.yaml is a copy, because Helm can only read files inside a
+# chart; `task ci:charts` fails when the two differ.
+#
+# Only fields the code emits today, so the list documents reality. A new field goes in here in the
+# same change that starts logging it.
+#
+#   kind: envelope  on every line from every service
+#         request   on request-scoped lines
+#         resource  added by the collector from Kubernetes, never by the services
+version: 1
+
+# VictoriaLogs stream fields: low-cardinality labels a stream is keyed on. Changing them splits
+# history into new streams, so they are effectively fixed.
+stream_fields: [service, k8s_namespace, k8s_pod]
+
+fields:
+  # envelope, written by packages/logging
+  - { name: time, kind: envelope, note: RFC 3339 timestamp; becomes the record's time }
+  - { name: level, kind: envelope, note: "DEBUG, INFO, WARN or ERROR; becomes the severity" }
+  - { name: msg, kind: envelope, note: constant message; becomes the body }
+  - { name: service, kind: envelope, note: "gateway or runtime" }
+  - { name: trace_id, kind: envelope, note: "W3C trace id, once services trace (#10)" }
+  - { name: span_id, kind: envelope, note: "W3C span id, once services trace (#10)" }
+
+  # gateway, services/gateway/internal/httpapi
+  - { name: request_id, kind: request, note: "X-Request-Id, kept by the edge or generated" }
+  - { name: method, kind: request, note: HTTP method }
+  - { name: http_route, kind: request, note: "matched route pattern, never the raw path" }
+  - { name: status, kind: request, note: HTTP status code }
+  - { name: duration_ms, kind: request, note: handling time in milliseconds }
+
+  # runtime, services/runtime/pkg/server
+  - { name: rpc, kind: request, note: full gRPC method name }
+  - { name: code, kind: request, note: gRPC status code }
+  - { name: caller, kind: request, note: client certificate CN }
+  - { name: addr, kind: request, note: listen address, startup only }
+  - { name: tls, kind: request, note: whether the listener uses TLS, startup only }
+
+  # OpenTelemetry resource attributes, set by each service's SDK (#10) and by tools such as telemetrygen.
+  # The redaction processor applies the list to resource attributes too, so a trace without these
+  # would reach Tempo with no service.
+  - { name: service.name, kind: resource, note: "the service a span or record comes from" }
+
+  # added by the collector from the log file path, then flattened by the gateway
+  - { name: k8s_namespace, kind: resource, note: namespace of the pod that wrote the line }
+  - { name: k8s_pod, kind: resource, note: pod name }
+  - { name: k8s_container, kind: resource, note: container name }

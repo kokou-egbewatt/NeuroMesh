@@ -1,0 +1,73 @@
+{{- /*
+The gateway's pipeline: the redaction boundary and the only writer to the stores. allowed_keys is
+rendered from fields.yaml (a copy of docs/observability/fields.yaml); an empty list admits nothing,
+which fails closed rather than open.
+*/}}
+{{- $fields := .Files.Get "fields.yaml" | fromYaml }}
+{{- $names := list }}
+{{- range $fields.fields }}{{ $names = append $names .name }}{{ end }}
+{{- if not $names }}{{ fail "fields.yaml lists no fields: the gateway would drop every attribute" }}{{ end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-gateway-config
+  labels: { app.kubernetes.io/part-of: neuromesh }
+  annotations:
+    checksum/fields: {{ .Files.Get "fields.yaml" | sha256sum | trunc 12 }}
+data:
+  relay: |
+    receivers:
+      otlp:
+        protocols:
+          grpc: { endpoint: "${env:MY_POD_IP}:4317" }
+          http: { endpoint: "${env:MY_POD_IP}:4318" }
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 80
+        spike_limit_percentage: 20
+      # Kubernetes names from the agent's resource attributes onto each record, under the flat keys
+      # the allow-list and the stream fields use. Before redaction, which matches keys exactly.
+      transform/normalise:
+        log_statements:
+          - context: log
+            statements:
+              - set(attributes["k8s_namespace"], resource.attributes["k8s.namespace.name"]) where resource.attributes["k8s.namespace.name"] != nil
+              - set(attributes["k8s_pod"], resource.attributes["k8s.pod.name"]) where resource.attributes["k8s.pod.name"] != nil
+              - set(attributes["k8s_container"], resource.attributes["k8s.container.name"]) where resource.attributes["k8s.container.name"] != nil
+      redaction/allowlist:
+        allow_all_keys: false
+        allowed_keys:
+          {{- range ($names | uniq | sortAlpha) }}
+          - {{ . }}
+          {{- end }}
+        summary: info
+      batch:
+        timeout: 5s
+        send_batch_size: 1024
+    exporters:
+      otlphttp/victorialogs:
+        logs_endpoint: {{ .Values.victorialogs }}/insert/opentelemetry/v1/logs
+        headers:
+          VL-Stream-Fields: {{ join "," $fields.stream_fields }}
+      otlp/tempo:
+        endpoint: {{ .Values.tempo }}
+        tls: { insecure: true }
+    extensions:
+      health_check:
+        endpoint: ${env:MY_POD_IP}:13133
+    service:
+      extensions: [health_check]
+      telemetry:
+        metrics:
+          readers:
+            - pull: { exporter: { prometheus: { host: "${env:MY_POD_IP}", port: 8888 } } }
+      pipelines:
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, transform/normalise, redaction/allowlist, batch]
+          exporters: [otlphttp/victorialogs]
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, redaction/allowlist, batch]
+          exporters: [otlp/tempo]

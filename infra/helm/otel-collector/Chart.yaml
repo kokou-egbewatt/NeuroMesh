@@ -1,0 +1,15 @@
+apiVersion: v2
+name: neuromesh-otel-collector
+description: The OpenTelemetry collector of the observability profile (#22) - an agent DaemonSet that reads pod logs, and a gateway that redacts to the field allow-list and is the only writer to VictoriaLogs and Tempo.
+type: application
+version: 0.1.0
+appVersion: 0.163.2
+dependencies:
+  - name: opentelemetry-collector
+    alias: agent
+    version: 0.178.2
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+  - name: opentelemetry-collector
+    alias: gateway
+    version: 0.178.2
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
