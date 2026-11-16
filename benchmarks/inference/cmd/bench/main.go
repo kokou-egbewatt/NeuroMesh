@@ -42,6 +42,8 @@ type Meta struct {
 	Warmup     int    `json:"warmup"`
 	Requests   int    `json:"requests"`
 	PerWorker  int    `json:"min_per_worker"`
+	// Target is "in-process" or the gateway URL -target named.
+	Target string `json:"target,omitempty"`
 }
 
 // Report is what -out writes and -compare reads.
@@ -65,6 +67,8 @@ func run() error {
 	commit := flag.String("commit", "", "service commit to record (default: the build's VCS revision)")
 	compare := flag.String("compare", "", "compare two result files, a.json,b.json, and fail on a p50 drift of 10% or more")
 	tolerance := flag.Float64("tolerance", 0.10, "p50 drift -compare accepts")
+	target := flag.String("target", "", "an already running gateway, such as https://gateway.neuromesh.localhost, instead of booting one in-process; only the route cases run, the runtime being out of reach")
+	caPath := flag.String("ca", "certs/dev/ca.crt", "with -target: the CA the gateway's certificate chains to")
 	flag.Parse()
 
 	if *compare != "" {
@@ -80,17 +84,34 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	stack, err := harness.Start(ctx, harness.Options{Logger: log})
-	if err != nil {
+	var stack *harness.Stack
+	if *target != "" {
+		caPEM, err := os.ReadFile(*caPath)
+		if err != nil {
+			return err
+		}
+		if stack, err = harness.Remote(*target, caPEM); err != nil {
+			return err
+		}
+	} else if stack, err = harness.Start(ctx, harness.Options{Logger: log}); err != nil {
 		return err
 	}
 	defer func() { _ = stack.Close() }()
 
 	meta := environment(*commit, *warmup, *requests, *perWorker)
-	fmt.Fprintf(os.Stderr, "bench: %s on %s, %d logical CPUs, commit %s\n", meta.GoVersion, meta.CPU, meta.LogicalCPU, meta.Commit)
+	meta.Target = *target
+	if meta.Target == "" {
+		meta.Target = "in-process"
+	}
+	fmt.Fprintf(os.Stderr, "bench: %s on %s, %d logical CPUs, commit %s, target %s\n", meta.GoVersion, meta.CPU, meta.LogicalCPU, meta.Commit, meta.Target)
 
 	rep := Report{Meta: meta}
 	for _, c := range inference.Matrix {
+		if *target != "" && c.Scenario == "stream" {
+			// The stream case calls the runtime directly, which is inside the cluster; the gateway
+			// has no streaming endpoint until #4.
+			continue
+		}
 		t0 := time.Now()
 		row, err := inference.RunCase(ctx, stack, c, *warmup, max(*requests, *perWorker*c.Concurrency))
 		if err != nil {
@@ -153,8 +174,12 @@ func vcsRevision() string {
 
 func writeSummary(w io.Writer, rep Report) error {
 	m := rep.Meta
-	if _, err := fmt.Fprintf(w, "\n- Date: %s\n- Commit: `%s`\n- Go: %s %s/%s\n- CPU: %s (%d logical, GOMAXPROCS %d)\n- Requests per case: %d recorded (at least %d per worker) after %d warmup\n\n",
-		m.Date, m.Commit, m.GoVersion, m.OS, m.Arch, m.CPU, m.LogicalCPU, m.GOMAXPROCS, m.Requests, m.PerWorker, m.Warmup); err != nil {
+	target := m.Target
+	if target == "" {
+		target = "in-process"
+	}
+	if _, err := fmt.Fprintf(w, "\n- Date: %s\n- Commit: `%s`\n- Target: %s\n- Go: %s %s/%s\n- CPU: %s (%d logical, GOMAXPROCS %d)\n- Requests per case: %d recorded (at least %d per worker) after %d warmup\n\n",
+		m.Date, m.Commit, target, m.GoVersion, m.OS, m.Arch, m.CPU, m.LogicalCPU, m.GOMAXPROCS, m.Requests, m.PerWorker, m.Warmup); err != nil {
 		return err
 	}
 	return inference.WriteMarkdown(w, rep.Rows)

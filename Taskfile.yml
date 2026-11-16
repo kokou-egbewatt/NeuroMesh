@@ -148,6 +148,39 @@ tasks:
     cmds:
       - go run ./tools/cluster delete {{.CLI_ARGS}}
 
+  # ---------------------------------------------------------------- services
+  # runtime and gateway on the local cluster (#14), images imported into k3s, no registry.
+  image:runtime:
+    desc: Build the runtime image and import it into the local cluster, tagged with the commit
+    cmds:
+      - bash scripts/services.sh image runtime
+
+  image:gateway:
+    desc: Build the gateway image and import it into the local cluster, tagged with the commit
+    cmds:
+      - bash scripts/services.sh image gateway
+
+  svc:up:
+    desc: Build, import and deploy runtime (2 replicas) and gateway to the local cluster
+    cmds:
+      - bash scripts/services.sh up
+
+  test:cluster:
+    desc: The golden path through the cluster-deployed gateway (after svc:up and edge:up)
+    dir: test/integration
+    cmds:
+      - go test -tags cluster -run Cluster -count=1 .
+
+  svc:down:
+    desc: Uninstall runtime and gateway from the local cluster
+    cmds:
+      - bash scripts/services.sh down
+
+  svc:status:
+    desc: The services' pods, and the gateway's /healthz through https://gateway.neuromesh.localhost
+    cmds:
+      - bash scripts/services.sh status
+
   # ---------------------------------------------------------------- edge
   # The local edge (#21, #23): every UI on the local cluster at https://<name>.neuromesh.localhost,
   # with no port-forward, relay or hosts file. docs/onboarding/local-cluster.md#local-hostnames.
@@ -297,6 +330,11 @@ tasks:
       - go run ./benchmarks/inference/cmd/bench -commit {{.COMMIT}} -out benchmarks/inference/results/run2.json {{.CLI_ARGS}}
       - go run ./benchmarks/inference/cmd/bench -compare benchmarks/inference/results/run1.json,benchmarks/inference/results/run2.json
 
+  bench:cluster:
+    desc: Record the route baseline twice from a Job inside the cluster against the gateway Service (after svc:up), and check repeatability
+    cmds:
+      - bash scripts/services.sh bench {{.CLI_ARGS}}
+
   bench:docker:
     desc: Record the baseline twice in a Linux container (the reference environment) and check repeatability
     cmds:
@@ -338,6 +376,11 @@ tasks:
     desc: Version control (changelog integrity, version gate) plus the version and its changelog entry in the job summary
     cmds:
       - bash ci/scripts/version-control.sh
+
+  ci:charts:
+    desc: Every chart under infra/helm lints, renders and validates (helm, kubeconform)
+    cmds:
+      - bash ci/scripts/charts.sh
 
   ci:summary:
     desc: Version, release title and commit this run builds (to the GitHub job summary in CI)
