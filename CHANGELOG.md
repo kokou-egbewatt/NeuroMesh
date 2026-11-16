@@ -9,6 +9,41 @@ enforces it and `task ci:changelog` checks the file's structure.
 
 ## [Unreleased]
 
+## [0.8.0] - Logs and Traces on the Local Cluster (2026-11-16)
+
+**The rest of the observability profile: every pod's logs reach VictoriaLogs through the collector,
+traces reach Tempo, and only the collector gateway may write to either.**
+[#22](https://github.com/kokou-egbewatt/NeuroMesh/issues/22) stays open for its end-to-end smoke
+test (one request's metric, trace and logs), which needs the services' instrumentation in #10.
+
+### Added
+
+- **`infra/helm/victoria-logs`:** VictoriaLogs 1.53 single, 7 days or 4 GiB on disk, with a Grafana
+  datasource and `https://victorialogs.neuromesh.localhost/select/vmui/`.
+- **`infra/helm/tempo`:** Tempo 2.9 single binary on local disk, 72 hours, with a Grafana datasource
+  that links a span to its logs by `trace_id`.
+- **`infra/helm/otel-collector`:** the contrib collector as an agent DaemonSet that reads
+  `/var/log/pods` and parses the services' JSON, and a gateway that copies the Kubernetes names onto
+  each record, redacts to the allow-list, and is the only writer to the stores.
+- **`docs/observability/fields.yaml`:** the field allow-list, holding only fields the code emits
+  today; the gateway's `allowed_keys` is rendered from its chart copy, and `task ci:charts` fails on
+  drift.
+- **NetworkPolicy** for VictoriaLogs, Tempo and the collector gateway: the stores admit the gateway as
+  their only writer, plus Grafana and vmagent, and the gateway admits the agent and `neuromesh`.
+- **`task obs:verify`:** a request's log line reaches VictoriaLogs redacted, a synthetic trace
+  reaches Tempo, the stores refuse a writer in another namespace, and all three Grafana datasources
+  are healthy.
+
+### Changed
+
+- **Grafana** installs the VictoriaLogs datasource plugin, pinned at 0.33.1.
+- **`task obs:up`** installs the logs and traces half after the metrics half, and restarts the
+  collectors so a changed pipeline loads; `task obs:access` lists the logs UI.
+- **`task ci:charts`** reads every dependency repository of a chart, not only the first.
+- **`docs/onboarding/local-cluster.md`** has the whole profile's footprint (530m and 1483 MiB
+  requested, about 133m and 1695 MiB in use), the retention of each store, and the few seconds
+  before NetworkPolicy recognises a new pod.
+
 ## [0.7.0] - The Services on the Local Cluster (2026-11-16)
 
 **runtime and gateway run on the local cluster through Helm charts, reachable at
