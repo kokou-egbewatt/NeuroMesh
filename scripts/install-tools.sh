@@ -16,8 +16,10 @@ declare -A PINS=(
   [golangci-lint]="github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2"
   [air]="github.com/air-verse/air@v1.67.4"
   [lefthook]="github.com/evilmartians/lefthook/v2@v2.1.14"
+  [helm]="helm.sh/helm/v4/cmd/helm@v4.3.1"
+  [kubeconform]="github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0"
 )
-ORDER=(task buf protoc-gen-go protoc-gen-go-grpc golangci-lint air lefthook)
+ORDER=(task buf protoc-gen-go protoc-gen-go-grpc golangci-lint air lefthook helm kubeconform)
 
 if [[ "${1:-}" == "--versions" ]]; then
   for t in "${ORDER[@]}"; do echo "$t ${PINS[$t]##*@}"; done
