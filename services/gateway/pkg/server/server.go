@@ -13,7 +13,13 @@ import (
 	"net/http"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"google.golang.org/grpc"
+
 	"github.com/kokou-egbewatt/NeuroMesh/packages/config"
+	"github.com/kokou-egbewatt/NeuroMesh/packages/telemetry"
+	"github.com/kokou-egbewatt/NeuroMesh/packages/tracing"
 	sdk "github.com/kokou-egbewatt/NeuroMesh/sdk/go"
 	"github.com/kokou-egbewatt/NeuroMesh/services/gateway/internal/httpapi"
 	"github.com/kokou-egbewatt/NeuroMesh/services/gateway/internal/router"
@@ -29,6 +35,10 @@ type Config struct {
 	HTTP            HTTPConfig     `yaml:"http"`
 	Limits          httpapi.Limits `yaml:"limits"`
 	Runtime         RuntimeConfig  `yaml:"runtime"`
+	// OTel exports spans to the collector gateway; empty endpoint, no tracing (#10).
+	OTel tracing.Config `yaml:"otel"`
+	// Metrics serves Prometheus /metrics on its own port when enabled (#10).
+	Metrics telemetry.Config `yaml:"metrics"`
 }
 
 // HTTPConfig bounds how long a client may hold a connection doing nothing.
@@ -78,11 +88,12 @@ func (c *Config) Defaults() {
 
 // Server is the gateway.
 type Server struct {
-	cfg    Config
-	log    *slog.Logger
-	client *sdk.Client
-	http   *http.Server
-	lis    net.Listener
+	cfg     Config
+	log     *slog.Logger
+	client  *sdk.Client
+	http    *http.Server
+	lis     net.Listener
+	metrics *telemetry.Metrics
 }
 
 // New builds the gateway: an HTTPS listener and a mutual TLS client to the
@@ -101,7 +112,9 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 		}
 		transport = sdk.WithTLS(clientTLS)
 	}
-	client, err := sdk.NewClient(cfg.Runtime.Addr, transport)
+	// A client span per call to the runtime, carrying the trace in the gRPC metadata.
+	client, err := sdk.NewClient(cfg.Runtime.Addr, transport,
+		sdk.WithDialOptions(grpc.WithStatsHandler(otelgrpc.NewClientHandler())))
 	if err != nil {
 		return nil, err
 	}
@@ -111,8 +124,20 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 		return nil, err
 	}
 
+	var m *telemetry.Metrics
+	if cfg.Metrics.Enabled {
+		m = telemetry.New("gateway")
+	}
+	// A server span per request, named by route template, never the raw path; health checks are
+	// probes and stay out of tracing.
+	handler := otelhttp.NewHandler(httpapi.New(rt, cfg.Limits, log).WithMetrics(m), "gateway",
+		otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+			return r.Method + " " + httpapi.RouteTemplate(r.URL.Path)
+		}),
+		otelhttp.WithFilter(func(r *http.Request) bool { return r.URL.Path != "/healthz" }),
+	)
 	srv := &http.Server{
-		Handler:           httpapi.New(rt, cfg.Limits, log),
+		Handler:           handler,
 		ReadHeaderTimeout: cfg.HTTP.ReadHeaderTimeout,
 		ReadTimeout:       cfg.HTTP.ReadTimeout,
 		IdleTimeout:       cfg.HTTP.IdleTimeout,
@@ -129,7 +154,7 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 		}
 		srv.TLSConfig = serverTLS
 	}
-	return &Server{cfg: cfg, log: log, client: client, http: srv}, nil
+	return &Server{cfg: cfg, log: log, client: client, http: srv, metrics: m}, nil
 }
 
 // Listen binds the configured address and wraps it in TLS unless insecure.
@@ -159,6 +184,11 @@ func (s *Server) Serve(ctx context.Context) error {
 		}
 	}
 	defer func() { _ = s.client.Close() }()
+	go func() {
+		if err := telemetry.Serve(ctx, s.cfg.Metrics, s.metrics, s.log); err != nil {
+			s.log.Error("metrics server stopped", "err", err)
+		}
+	}()
 	errc := make(chan error, 1)
 	go func() { errc <- s.http.Serve(s.lis) }()
 	s.log.Info("gateway listening", "addr", s.lis.Addr().String(), "https", s.http.TLSConfig != nil, "runtime", s.cfg.Runtime.Addr)
@@ -179,3 +209,6 @@ func (s *Server) Serve(ctx context.Context) error {
 	}
 	return nil
 }
+
+// Metrics is the server's request metrics, nil when metrics are off.
+func (s *Server) Metrics() *telemetry.Metrics { return s.metrics }
