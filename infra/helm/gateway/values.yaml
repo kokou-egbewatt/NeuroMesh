@@ -1,0 +1,35 @@
+# services/gateway (#14). scripts/services.sh builds the image, imports it into k3s and sets
+# image.tag to the commit; nothing is pulled from a registry.
+replicaCount: 1
+
+image:
+  repository: neuromesh-gateway
+  tag: ""
+  pullPolicy: Never
+
+# tls.crt, tls.key and ca.crt at /certs: its HTTPS server certificate and its client certificate to
+# the runtime, from certs/dev/gateway.
+tlsSecret: gateway-tls
+
+# Measured on the reference machine (docs/onboarding/local-cluster.md#the-services): idle it uses
+# about 1m and 8 to 13 MiB; under the 64-client route benchmark it peaked at 1388m and 15 MiB.
+# The request is what it needs to start and serve light traffic; CPU has no limit, so a burst uses
+# idle cores instead of being throttled.
+resources:
+  requests: { cpu: 50m, memory: 32Mi }
+  limits: { memory: 128Mi }
+
+# https://gateway.<domain> through the local edge (infra/helm/edge). The edge terminates TLS with the
+# wildcard certificate and opens a new TLS connection to the gateway, verified against the dev CA in
+# caConfigMap under the name in the gateway's own certificate.
+edge:
+  enabled: true
+  domain: neuromesh.localhost
+  gateway: { name: neuromesh-edge, namespace: edge }
+  caConfigMap: neuromesh-ca
+
+metrics:
+  enabled: false
+  port: 9090
+  path: /metrics
+  interval: 30s

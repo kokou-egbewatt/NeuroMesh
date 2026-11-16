@@ -75,3 +75,15 @@ spec:
           selector:
             matchLabels:
               {{ .Values.routeNamespaceLabel }}: "true"
+---
+# Keep a client's X-Request-Id instead of replacing it, and make one only when there is none: the
+# services log it and it joins logs to traces, so it must survive the edge.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: neuromesh-edge
+spec:
+  targetRefs:
+    - { group: gateway.networking.k8s.io, kind: Gateway, name: neuromesh-edge }
+  headers:
+    requestID: PreserveOrGenerate

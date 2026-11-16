@@ -1,0 +1,6 @@
+apiVersion: v2
+name: gateway
+description: services/gateway on the local cluster (#14) - the HTTPS front door, calling the runtime over mutual TLS, at https://gateway.neuromesh.localhost through the local edge.
+type: application
+version: 0.1.0
+appVersion: 0.7.0

@@ -1,0 +1,80 @@
+{{- if not .Values.image.tag }}{{ fail "image.tag is required: scripts/services.sh sets it to the commit it built" }}{{ end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: runtime
+  labels: { app.kubernetes.io/name: runtime, app.kubernetes.io/part-of: neuromesh }
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels: { app.kubernetes.io/name: runtime }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: runtime, app.kubernetes.io/part-of: neuromesh }
+    spec:
+      # Longer than the config's shutdown_timeout (10s), so a drain is never cut by SIGKILL.
+      terminationGracePeriodSeconds: 15
+      securityContext:
+        runAsNonRoot: true
+        # distroless nonroot; the image names the user, which runAsNonRoot can't verify by itself.
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: runtime
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: grpc, containerPort: 50051 }
+            - { name: health, containerPort: 8081 }
+          {{- if .Values.metrics.enabled }}
+            - { name: metrics, containerPort: {{ .Values.metrics.port }} }
+          {{- end }}
+          # grpc.health.v1 on the plaintext health port; the main port requires a client certificate.
+          readinessProbe:
+            grpc: { port: 8081 }
+            periodSeconds: 5
+          livenessProbe:
+            grpc: { port: 8081 }
+            periodSeconds: 10
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts: [{ name: certs, mountPath: /certs, readOnly: true }]
+      volumes:
+        - name: certs
+          secret: { secretName: {{ .Values.tlsSecret }} }
+---
+# Headless: the gateway resolves runtime to every ready pod. The name is the one in the runtime's
+# certificate and the gateway's runtime.server_name.
+apiVersion: v1
+kind: Service
+metadata:
+  name: runtime
+  labels: { app.kubernetes.io/name: runtime, app.kubernetes.io/part-of: neuromesh }
+spec:
+  clusterIP: None
+  selector: { app.kubernetes.io/name: runtime }
+  ports:
+    - { name: grpc, port: 50051, targetPort: grpc }
+    {{- if .Values.metrics.enabled }}
+    - { name: metrics, port: {{ .Values.metrics.port }}, targetPort: metrics }
+    {{- end }}
+{{- if .Values.metrics.enabled }}
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: runtime
+  labels: { app.kubernetes.io/name: runtime, app.kubernetes.io/part-of: neuromesh }
+spec:
+  selector:
+    matchLabels: { app.kubernetes.io/name: runtime }
+  endpoints:
+    - port: metrics
+      path: {{ .Values.metrics.path }}
+      interval: {{ .Values.metrics.interval }}
+{{- end }}

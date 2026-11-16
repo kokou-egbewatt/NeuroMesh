@@ -1,0 +1,12 @@
+# NeuroMesh's own services (#14). Restricted: the services run as non-root on distroless images with
+# no extra capabilities, and Pod Security keeps it that way. The alert rule NeuroMeshServiceDown
+# watches scrape targets in this namespace.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: neuromesh
+  labels:
+    app.kubernetes.io/part-of: neuromesh
+    pod-security.kubernetes.io/enforce: restricted
+    # Its HTTPRoutes may attach to the local edge (infra/helm/edge).
+    neuromesh.dev/edge: "true"
