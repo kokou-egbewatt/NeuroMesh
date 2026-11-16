@@ -148,6 +148,34 @@ tasks:
     cmds:
       - go run ./tools/cluster delete {{.CLI_ARGS}}
 
+  # ---------------------------------------------------------------- observability
+  # The observability profile on the local cluster (#22): for now the metrics half, the
+  # VictoriaMetrics stack and dcgm-exporter. observability/victoria-metrics/README.md explains it.
+  obs:up:
+    desc: Install or upgrade the observability profile on the local cluster (idempotent)
+    cmds:
+      - bash scripts/observability.sh up
+
+  obs:down:
+    desc: Uninstall the profile, keeping its CRDs and namespace (metrics history is lost)
+    cmds:
+      - bash scripts/observability.sh down
+
+  obs:status:
+    desc: The profile's pods and whether every scrape target is up
+    cmds:
+      - bash scripts/observability.sh status
+
+  obs:access:
+    desc: Hostnames, paths and logins for the profile's UIs (passwords masked; -- --show prints them)
+    cmds:
+      - bash scripts/observability.sh access {{.CLI_ARGS}}
+
+  obs:test-rules:
+    desc: Unit test the VMRule alert rules with vmalert-tool (in Docker)
+    cmds:
+      - bash scripts/observability.sh test-rules
+
   # ---------------------------------------------------------------- proto
   proto:gen:
     desc: Generate sdk/go/gen from proto/ with the pinned plugins (output is committed)

@@ -1,0 +1,81 @@
+# Unit tests for infra/helm/victoria-metrics/files/rules/platform.yaml: task obs:test-rules.
+rule_files:
+  - ../../../infra/helm/victoria-metrics/files/rules/platform.yaml
+evaluation_interval: 30s
+tests:
+  - name: dcgm-exporter down fires after 5 minutes
+    interval: 30s
+    input_series:
+      - series: 'up{job="dcgm-exporter"}'
+        values: "0x20"
+    alert_rule_test:
+      - eval_time: 4m
+        groupname: neuromesh.gpu
+        alertname: DCGMExporterDown
+        exp_alerts: []
+      - eval_time: 6m
+        groupname: neuromesh.gpu
+        alertname: DCGMExporterDown
+        exp_alerts:
+          - exp_labels: { severity: warning, job: dcgm-exporter }
+            exp_annotations:
+              summary: dcgm-exporter has not been scraped for 5 minutes, so GPU metrics have a gap.
+              runbook: kubectl -n observability logs ds/dcgm-exporter
+
+  - name: dcgm-exporter never scraped also fires
+    interval: 30s
+    input_series:
+      - series: 'up{job="other"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 6m
+        groupname: neuromesh.gpu
+        alertname: DCGMExporterDown
+        exp_alerts:
+          - exp_labels: { severity: warning, job: dcgm-exporter }
+            exp_annotations:
+              summary: dcgm-exporter has not been scraped for 5 minutes, so GPU metrics have a gap.
+              runbook: kubectl -n observability logs ds/dcgm-exporter
+
+  - name: a healthy exporter is quiet
+    interval: 30s
+    input_series:
+      - series: 'up{job="dcgm-exporter"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 9m
+        groupname: neuromesh.gpu
+        alertname: DCGMExporterDown
+        exp_alerts: []
+
+  - name: GPU above 85 °C for 5 minutes
+    interval: 30s
+    input_series:
+      - series: 'DCGM_FI_DEV_GPU_TEMP{gpu="0"}'
+        values: "90x20"
+      - series: 'DCGM_FI_DEV_GPU_TEMP{gpu="1"}'
+        values: "80x20"
+    alert_rule_test:
+      - eval_time: 6m
+        groupname: neuromesh.gpu
+        alertname: GPUHot
+        exp_alerts:
+          - exp_labels: { severity: warning, gpu: "0" }
+            exp_annotations:
+              summary: The GPU has been above 85 °C for 5 minutes (90 °C).
+
+  - name: a NeuroMesh service down for 2 minutes
+    interval: 30s
+    input_series:
+      - series: 'up{namespace="neuromesh", job="gateway"}'
+        values: "0x10"
+      - series: 'up{namespace="neuromesh", job="runtime"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 3m
+        groupname: neuromesh.services
+        alertname: NeuroMeshServiceDown
+        exp_alerts:
+          - exp_labels: { severity: critical, namespace: neuromesh, job: gateway }
+            exp_annotations:
+              summary: "gateway has failed its scrape for 2 minutes."
