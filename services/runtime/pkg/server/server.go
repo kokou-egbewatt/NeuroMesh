@@ -30,7 +30,8 @@ import (
 	"github.com/kokou-egbewatt/NeuroMesh/packages/telemetry"
 	"github.com/kokou-egbewatt/NeuroMesh/packages/tracing"
 	neuromeshv1 "github.com/kokou-egbewatt/NeuroMesh/sdk/go/gen/neuromesh/v1"
-	"github.com/kokou-egbewatt/NeuroMesh/services/runtime/internal/stub"
+	"github.com/kokou-egbewatt/NeuroMesh/services/runtime/internal/backend"
+	"github.com/kokou-egbewatt/NeuroMesh/services/runtime/internal/service"
 )
 
 // Config is the runtime's config file.
@@ -54,6 +55,26 @@ type Config struct {
 	OTel tracing.Config `yaml:"otel"`
 	// Metrics serves Prometheus /metrics on its own port when enabled (#10).
 	Metrics telemetry.Config `yaml:"metrics"`
+	// Backend is what generates the text (#1).
+	Backend BackendConfig `yaml:"backend"`
+}
+
+// BackendConfig picks the backend. The stub is the default, so the tests and the #13 baseline run
+// without a model server.
+type BackendConfig struct {
+	// Kind is stub or ollama; anything else fails at startup.
+	Kind   string       `yaml:"kind"`
+	Ollama OllamaConfig `yaml:"ollama"`
+}
+
+// OllamaConfig is backend.kind ollama's server.
+type OllamaConfig struct {
+	BaseURL string `yaml:"base_url"`
+	// DialTimeout bounds connecting (default 3s): an unreachable server is Unavailable within it.
+	DialTimeout time.Duration `yaml:"dial_timeout"`
+	// ResponseHeaderTimeout caps the wait for an answer to start (default 60s). A unary generation
+	// starts answering only when it is finished, so this bounds model load plus generation.
+	ResponseHeaderTimeout time.Duration `yaml:"response_header_timeout"`
 }
 
 // Defaults fills unset fields.
@@ -110,7 +131,18 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 		grpc.ChainUnaryInterceptor(unaryLogger(log, m)),
 		grpc.ChainStreamInterceptor(streamLogger(log, m)),
 	)
-	neuromeshv1.RegisterInferenceServiceServer(g, stub.Server{})
+	b, err := backend.New(cfg.Backend.Kind, backend.OllamaConfig{
+		BaseURL:               cfg.Backend.Ollama.BaseURL,
+		DialTimeout:           cfg.Backend.Ollama.DialTimeout,
+		ResponseHeaderTimeout: cfg.Backend.Ollama.ResponseHeaderTimeout,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if b.Name() != backend.KindStub {
+		log.Info("backend selected", "backend", b.Name(), "backend_url", cfg.Backend.Ollama.BaseURL)
+	}
+	neuromeshv1.RegisterInferenceServiceServer(g, service.New(b))
 	h := health.NewServer()
 	h.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	healthpb.RegisterHealthServer(g, h)

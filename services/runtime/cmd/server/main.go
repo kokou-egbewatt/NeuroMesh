@@ -48,6 +48,8 @@ func run() error {
 	}
 	cfg.Metrics.Enabled = config.BoolEnv("METRICS_ENABLED", cfg.Metrics.Enabled)
 	cfg.Metrics.Addr = config.StringEnv("METRICS_ADDR", cfg.Metrics.Addr)
+	cfg.Backend.Kind = config.StringEnv("BACKEND_KIND", cfg.Backend.Kind)
+	cfg.Backend.Ollama.BaseURL = config.StringEnv("OLLAMA_BASE_URL", cfg.Backend.Ollama.BaseURL)
 
 	log, err := logging.New(os.Stdout, "runtime", cfg.LogLevel, cfg.LogFormat)
 	if err != nil {
