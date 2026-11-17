@@ -38,6 +38,8 @@ fields:
   - { name: addr, kind: request, note: listen address, startup only }
   - { name: tls, kind: request, note: whether the listener uses TLS, startup only }
   - { name: chunks, kind: request, note: messages a stream sent }
+  - { name: backend, kind: request, note: "backend kind, stub or ollama (#1), startup only" }
+  - { name: backend_url, kind: request, note: "the backend server, startup only" }
 
   # OpenTelemetry resource attributes, set by each service's SDK (#10) and by tools such as telemetrygen.
   # The redaction processor applies the list to resource attributes too, so a trace without these

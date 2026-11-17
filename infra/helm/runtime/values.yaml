@@ -32,3 +32,9 @@ otel:
   # The share of new traces kept. Tracing every request cost up to 27% p50 on the stub benchmark at
   # 64 clients; 10% costs nothing measurable (#10). A client's sampled traceparent is always followed.
   sampleRatio: "0.1"
+
+# What generates the text (#1): stub, the fixed answer the golden files and the baseline use, or
+# ollama, the Ollama chart in this namespace (`task ollama:up`). `BACKEND=ollama task svc:up` sets it.
+backend:
+  kind: stub
+  ollamaURL: http://ollama:11434

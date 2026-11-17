@@ -1,0 +1,134 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-models
+  labels: { app.kubernetes.io/name: ollama, app.kubernetes.io/part-of: neuromesh }
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.storage.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests: { storage: {{ .Values.storage.size }} }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+  labels: { app.kubernetes.io/name: ollama, app.kubernetes.io/part-of: neuromesh }
+spec:
+  replicas: 1
+  # The first rollout pulls a multi-GB image and the models; the default 10 minutes is too short.
+  progressDeadlineSeconds: 1800
+  # One pod at a time: the PVC is ReadWriteOnce and the GPU is one.
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app.kubernetes.io/name: ollama }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: ollama, app.kubernetes.io/part-of: neuromesh }
+    spec:
+      {{- if .Values.gpu.enabled }}
+      runtimeClassName: nvidia
+      {{- end }}
+      # The namespace enforces Pod Security restricted: a numeric non-root user, and fsGroup so it
+      # can write the PVC.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: { type: RuntimeDefault }
+      initContainers:
+        - name: pull
+          image: {{ .Values.image }}
+          command: [sh, -c]
+          args:
+            - |
+              set -e
+              ollama serve >/tmp/serve.log 2>&1 &
+              pid=$!
+              i=0
+              until ollama list >/dev/null 2>&1; do
+                i=$((i + 1)); [ "$i" -lt 60 ] || { cat /tmp/serve.log; exit 1; }
+                sleep 1
+              done
+              for m in $MODELS; do ollama pull "$m"; done
+              # One generation per model compiles the CUDA kernels into CUDA_CACHE_PATH on the PVC. The
+              # first load on this card took 50 s with an empty cache and 3 s with it.
+              for m in $MODELS; do echo hi | ollama run "$m" >/dev/null; done
+              kill "$pid"; wait "$pid" || true
+          env:
+            - { name: MODELS, value: {{ join " " .Values.models | quote }} }
+            - { name: OLLAMA_HOST, value: "127.0.0.1:11434" }
+            - { name: OLLAMA_MODELS, value: /models }
+            - { name: CUDA_CACHE_PATH, value: /models/.cuda-cache }
+            - { name: HOME, value: /home/ollama }
+          securityContext: &container
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts: &mounts
+            - { name: models, mountPath: /models }
+            - { name: home, mountPath: /home/ollama }
+            - { name: tmp, mountPath: /tmp }
+      containers:
+        - name: ollama
+          image: {{ .Values.image }}
+          env:
+            - { name: OLLAMA_HOST, value: "0.0.0.0:11434" }
+            - { name: OLLAMA_MODELS, value: /models }
+            - { name: CUDA_CACHE_PATH, value: /models/.cuda-cache }
+            - { name: OLLAMA_KEEP_ALIVE, value: {{ .Values.keepAlive | quote }} }
+            - { name: HOME, value: /home/ollama }
+          ports:
+            - { name: http, containerPort: 11434 }
+          readinessProbe:
+            httpGet: { path: /, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          securityContext: *container
+          resources:
+            {{- $r := deepCopy .Values.resources }}
+            {{- if .Values.gpu.enabled }}
+            {{- $_ := set $r.limits "nvidia.com/gpu" 1 }}
+            {{- end }}
+            {{- toYaml $r | nindent 12 }}
+          volumeMounts: *mounts
+      volumes:
+        - name: models
+          persistentVolumeClaim: { claimName: ollama-models }
+        - { name: home, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+  labels: { app.kubernetes.io/name: ollama, app.kubernetes.io/part-of: neuromesh }
+spec:
+  selector: { app.kubernetes.io/name: ollama }
+  ports:
+    - { name: http, port: 11434, targetPort: http }
+{{- if and .Values.edge.enabled (.Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1/HTTPRoute") }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ollama
+  labels: { app.kubernetes.io/name: ollama, app.kubernetes.io/part-of: neuromesh }
+spec:
+  parentRefs:
+    - name: {{ .Values.edge.gateway.name }}
+      namespace: {{ .Values.edge.gateway.namespace }}
+      sectionName: https
+  hostnames: ["ollama.{{ .Values.edge.domain }}"]
+  rules:
+    - matches: [{ path: { type: PathPrefix, value: / } }]
+      # Envoy's default 15 s is shorter than loading a model; a streamed answer counts from its start.
+      timeouts: { request: 120s }
+      backendRefs: [{ name: ollama, port: 11434 }]
+{{- end }}

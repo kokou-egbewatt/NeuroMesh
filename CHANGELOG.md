@@ -9,6 +9,40 @@ enforces it and `task ci:changelog` checks the file's structure.
 
 ## [Unreleased]
 
+## [0.10.0] - Ollama Backend (2026-11-16)
+
+**The runtime generates real text: a `Backend` interface with the stub and Ollama behind it, and
+Ollama on the local cluster's GPU.** Closes [#1](https://github.com/kokou-egbewatt/NeuroMesh/issues/1).
+
+### Added
+
+- **`services/runtime/internal/backend`:** the `Backend` interface (`Complete`, and `Stream` with a
+  callback per token), the stub moved behind it unchanged, and the Ollama adapter over
+  `/api/generate`. `temperature`, `max_tokens` and `stop` pass through to Ollama.
+- **`services/runtime/internal/service`:** `InferenceService` over a backend. Backend errors map to
+  gRPC codes here, once for every adapter: unreachable is `Unavailable`, a model not pulled is
+  `NotFound`, a rejected request is `InvalidArgument`.
+- **`backend.kind`** (`stub` by default, or `ollama`) and `backend.ollama.*` in the runtime config,
+  with `BACKEND_KIND` and `OLLAMA_BASE_URL`. An unknown kind fails startup; the runtime boots whether
+  or not Ollama is up.
+- **`infra/helm/ollama`:** Ollama 0.40.15 on the GPU (the `nvidia` RuntimeClass and
+  `nvidia.com/gpu: 1`), models pulled into a PVC and warmed by an init container (the CUDA kernel cache
+  on the PVC takes a first load from 50 s to 3 s), Pod Security restricted, and
+  `https://ollama.neuromesh.localhost` through the edge. `task ollama:up|down|status`, and
+  `BACKEND=ollama task svc:up`.
+- **Tests:** the adapter against a fake Ollama (options, stream order, error lines, status codes,
+  unreachable, cancellation), the code mapping, and on the cluster: "reply with exactly: pong" through
+  the gateway, an unpulled model as 404, at least two stream chunks in generation order, and Ollama
+  scaled to zero as a 503 within the dial timeout.
+
+### Changed
+
+- **`task test:cluster`** reads the runtime's backend: the golden request on the stub, the Ollama
+  tests on Ollama.
+- **`fields.yaml`** allows `backend` and `backend_url`, logged once at startup.
+- **Edge route timeouts:** 45 s on the gateway route, above its own 30 s `upstream_timeout`, instead of
+  Envoy's default 15 s, which cut a model's first load.
+
 ## [0.9.0] - Tracing and Metrics End to End (2026-11-16)
 
 **One request is one trace across the gateway and the runtime, both services expose request

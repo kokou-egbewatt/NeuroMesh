@@ -1,0 +1,32 @@
+# Ollama for backend.kind ollama (#1). `task ollama:up` installs it in the neuromesh namespace and
+# `BACKEND=ollama task svc:up` points the runtime at it.
+image: ollama/ollama:0.40.15
+
+# Pulled by an init container before the server starts, into the PVC, so a restart pulls nothing.
+# qwen2.5:0.5b is about 400 MB: quick to pull and small next to the 8 GB card. The cluster tests use it.
+models: [qwen2.5:0.5b]
+
+# On the GPU through the nvidia RuntimeClass, holding the one nvidia.com/gpu the node advertises:
+# nothing else that asks for it schedules while Ollama runs (`task ollama:down` frees it). Off runs on
+# the CPU.
+gpu:
+  enabled: true
+
+# How long a model stays in memory (and VRAM) after its last request; Ollama's own default.
+keepAlive: 5m
+
+storage:
+  size: 10Gi
+  # Empty is the cluster's default class, local-path on k3s.
+  storageClass: ""
+
+resources:
+  requests: { cpu: 100m, memory: 512Mi }
+  limits: { memory: 4Gi }
+
+# https://ollama.<domain> through the local edge, plain HTTP behind it: the cluster tests reach
+# Ollama directly this way, and so can a client on Windows.
+edge:
+  enabled: true
+  domain: neuromesh.localhost
+  gateway: { name: neuromesh-edge, namespace: edge }

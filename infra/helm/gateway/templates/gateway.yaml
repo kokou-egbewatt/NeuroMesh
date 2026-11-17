@@ -96,6 +96,9 @@ spec:
   hostnames: ["gateway.{{ .Values.edge.domain }}"]
   rules:
     - matches: [{ path: { type: PathPrefix, value: / } }]
+      # Longer than the gateway's own upstream_timeout (30 s), so a slow backend gets the gateway's 504
+      # with its request ID instead of Envoy's default 15 s cut.
+      timeouts: { request: 45s }
       backendRefs: [{ name: gateway, port: 8443 }]
 ---
 # The gateway only speaks HTTPS, so the edge re-encrypts, checking the gateway's certificate.

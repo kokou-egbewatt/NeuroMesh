@@ -134,6 +134,27 @@ task svc:down
 - **Pod Security** is `restricted` in `neuromesh`: non-root (uid 65532, the distroless user, set numerically because the image names it), read-only root filesystem, no capabilities.
 - **Instrumentation** (#10). Both services export spans to the collector gateway (`OTEL_EXPORTER_OTLP_ENDPOINT`) and serve Prometheus `/metrics` on `:9090`, which vmagent scrapes through each chart's `VMServiceScrape`. One request is one trace: the gateway's HTTP span, its client span, and the runtime's server span as that client span's child. Both services' log lines carry `trace_id` and `span_id` while a span is active, so Grafana joins a trace to its logs. `task test:cluster` checks one request across all three stores.
 
+
+### Ollama
+
+The runtime's first real backend (#1), from [`infra/helm/ollama`](../../infra/helm/ollama/), in the `neuromesh` namespace:
+
+```sh
+task ollama:up                  # Ollama on the GPU; an init container pulls qwen2.5:0.5b into a PVC first
+BACKEND=ollama task svc:up      # the runtime on backend.kind ollama, at http://ollama:11434
+task ollama:status              # the pod, the runtime's backend, and https://ollama.neuromesh.localhost
+task test:cluster               # on Ollama: real output, NotFound for an unpulled model, streaming, scaled to zero
+task svc:up                     # back to the stub
+task ollama:down                # frees the GPU; the PVC keeps the models
+```
+
+- **It holds the GPU.** The pod asks for the one `nvidia.com/gpu` the node advertises, with the `nvidia` RuntimeClass, so nothing else that needs the GPU schedules while it runs: `task ollama:down` before an infinity-bench run. `gpu.enabled: false` runs it on the CPU.
+- **Models** are pulled by an init container before the server starts, into the `ollama-models` PVC, so a restart pulls nothing. The chart's `models` list sets which; model names in requests are Ollama tags.
+- **The first load is slow once.** On the RTX 5060 the first load of a model took 50 s, compiling CUDA kernels, and a reload with the compiled kernels 3 s; a warm request answers in under half a second. The init container runs one generation per model so the compile happens before Ollama is Ready, and `CUDA_CACHE_PATH` keeps the kernels on the PVC. The edge allows 120 s on `ollama.neuromesh.localhost` and 45 s on `gateway.neuromesh.localhost` (above the gateway's 30 s `upstream_timeout`) instead of Envoy's default 15 s, which cut the first load and made Ollama abandon it.
+- **Pod Security restricted** holds: uid 65532, a read-only root filesystem, `HOME` and `/tmp` on emptyDirs.
+- **`https://ollama.neuromesh.localhost`** is Ollama's API through the edge. The streaming cluster test uses it, because the gateway has no streaming route yet (#4).
+- **`task test:cluster` follows the runtime's backend.** On the stub it runs the golden request; on Ollama it skips that and runs the Ollama tests. The scaled-to-zero test scales Ollama down, checks for a 503 within the dial timeout, and scales it back up before it returns.
+
 ## When something is wrong
 
 `task cluster:status` checks the layers in order: the Windows driver, the keepalive, the distro, systemd, `/dev/dxg`, the toolkit, k3s, the containerd runtime, the node, the RuntimeClass, the device plugin, `nvidia.com/gpu`, the policy, and the kubeconfig context. Fix the first ❌; the ones after it usually follow.

@@ -32,6 +32,10 @@ spec:
             - { name: OTEL_TRACES_SAMPLER_ARG, value: {{ .Values.otel.sampleRatio | quote }} }
             - { name: METRICS_ENABLED, value: {{ .Values.metrics.enabled | quote }} }
             - { name: METRICS_ADDR, value: ":{{ .Values.metrics.port }}" }
+            - { name: BACKEND_KIND, value: {{ .Values.backend.kind | quote }} }
+            {{- if eq .Values.backend.kind "ollama" }}
+            - { name: OLLAMA_BASE_URL, value: {{ .Values.backend.ollamaURL | quote }} }
+            {{- end }}
           ports:
             - { name: grpc, containerPort: 50051 }
             - { name: health, containerPort: 8081 }
