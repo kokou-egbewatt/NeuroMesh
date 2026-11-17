@@ -4,6 +4,17 @@ Traffic entrypoint for NeuroMesh: auth, quotas, rate limiting, routing, streamin
 
 This is the data plane, not the control plane. It sits in the hot path of every inference request and only reads locally cached config (auth keys, quotas, routing policy) at request time. It must never make a synchronous call to `apps/control-plane` (or any other management-plane service) while handling a request. See [ADR-0002](../../docs/adr/0002-control-plane-data-plane-split.md).
 
+```mermaid
+flowchart LR
+    client["client, via the edge"] -->|HTTPS| server["pkg/server<br/>TLS, timeouts, metrics, tracing"]
+    server --> httpapi["internal/httpapi<br/>request ID, limits, validation,<br/>error shape, status mapping"]
+    httpapi --> router["internal/router<br/>Static today"]
+    router -->|"gRPC, mutual TLS"| runtime["runtime"]
+    cache[("cached config<br/>keys, quotas, policy")] -.->|"read only, later"| httpapi
+```
+
+The full path, timeouts and error mapping are in [Request path](../../docs/architecture/request-path.md).
+
 ## Surface
 
 HTTPS only, TLS 1.3 minimum. Every response carries `X-Request-Id` (the client's, when it is 1 to 128 characters of `[A-Za-z0-9._-]`, otherwise a generated UUID) and `Content-Type: application/json`.

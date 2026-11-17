@@ -2,6 +2,102 @@
 
 NeuroMesh is an AI runtime operating system: a unified platform for inference orchestration, streaming AI pipelines, agent execution, GPU scheduling, observability, evaluation, reliability, autoscaling, backpressure management, and distributed tracing. Think "Kubernetes + Datadog + Envoy + Temporal for AI inference and agents."
 
+## What runs today
+
+Phase 1 so far, on the local cluster. Solid boxes run; the dashed one is a real backend that's optional (`task ollama:up`).
+
+```mermaid
+flowchart LR
+    client["client<br/>curl, Go SDK, bench"]
+
+    subgraph cluster["k3s in WSL2 (gpu-lab)"]
+        subgraph edgens["edge"]
+            edge["Envoy Gateway<br/>:443, *.neuromesh.localhost"]
+        end
+        subgraph nm["neuromesh"]
+            gw["gateway<br/>HTTPS :8443"]
+            rt["runtime x2<br/>gRPC :50051"]
+            ol["Ollama<br/>:11434, GPU"]
+        end
+        subgraph obs["observability"]
+            col["OTel collector<br/>agent + gateway"]
+            vm["VictoriaMetrics<br/>vmagent, vmalert"]
+            vl["VictoriaLogs"]
+            tempo["Tempo"]
+            graf["Grafana"]
+            dcgm["dcgm-exporter"]
+        end
+        gpu[("RTX 5060<br/>nvidia.com/gpu: 1")]
+    end
+
+    client -->|HTTPS| edge
+    edge -->|"TLS, re-encrypted"| gw
+    gw -->|"mTLS, InferenceService"| rt
+    rt -.->|"HTTP /api/generate"| ol
+    ol -.-> gpu
+    dcgm -.->|"reads counters"| gpu
+
+    gw & rt -->|"OTLP spans"| col
+    gw & rt -->|"stdout logs"| col
+    col --> vl & tempo
+    vm -->|"scrapes /metrics"| gw & rt & dcgm
+    graf --> vm & vl & tempo
+    edge --> graf
+```
+
+One request, end to end, is in [Request path](request-path.md). The machine underneath is in [Substrate](substrate.md), and the telemetry in [Observability](observability.md).
+
+## Where it is going
+
+Every service from the roadmap below, in its plane. Only the gateway and the runtime exist yet; the rest are placeholders with a README.
+
+```mermaid
+flowchart TB
+    subgraph surfaces["Operator surfaces (Phase 7)"]
+        dash["apps/dashboard"]
+        cli["apps/cli"]
+    end
+
+    subgraph control["Control plane"]
+        cp["apps/control-plane<br/>tenancy, deployments, routing policy"]
+        sched["scheduler (4)<br/>GPU placement"]
+        auto["autoscaler (4)"]
+        evalr["eval-engine (5)"]
+        obsv["observability (5)<br/>lineage, token cost, query API"]
+    end
+
+    subgraph data["Data plane"]
+        gw["gateway (1)<br/>auth, quotas, routing"]
+        rt["runtime (1)<br/>backends, batching, streaming"]
+        se["stream-engine (2)"]
+        sm["session-manager (2)"]
+        er["event-router (3)<br/>replay, backpressure"]
+        ag["agent-runtime (6)"]
+    end
+
+    backends["model servers<br/>Ollama, vLLM, Triton, SGLang"]
+    stores[("VictoriaMetrics, VictoriaLogs, Tempo")]
+
+    dash & cli --> cp
+    dash & cli --> obsv
+    cp -.->|"desired state, pushed and cached"| gw
+    sched -.-> rt
+    auto -.-> rt
+    gw --> rt
+    gw --> se
+    se --> sm
+    se --> rt
+    gw --> er
+    er --> rt
+    ag -->|"inference steps"| gw
+    rt --> backends
+    gw & rt & se & er & ag -.-> stores
+    obsv --> stores
+    evalr --> obsv
+```
+
+The dotted arrow from the control plane is the rule from [ADR-0002](../adr/0002-control-plane-data-plane-split.md): desired state reaches the gateway ahead of time, and nothing in the data plane calls the control plane while it handles a request.
+
 ## Target flow
 
 All of the following happen inside one runtime platform:
@@ -33,7 +129,7 @@ NeuroMesh follows the same split Envoy/Istio use. `services/gateway` is the **da
 
 ## Service responsibility map
 
-- **`services/runtime`**: unified inference abstraction over Triton, vLLM, TensorRT-LLM, Ollama, SGLang. Handles batching, streaming, retries, model abstraction.
+- **`services/runtime`**: unified inference abstraction over Triton, vLLM, TensorRT-LLM, Ollama, SGLang. Handles batching, streaming, retries, model abstraction. Today: a `Backend` interface with the stub and Ollama behind it.
 - **`services/gateway`**: data plane traffic entrypoint. Handles auth, quotas, rate limiting, routing, streaming sessions, all against locally cached config. "Envoy for AI inference."
 - **`services/stream-engine`**: WebRTC ingestion, multimodal pipelines, realtime inference, adaptive frame dropping.
 - **`services/agent-runtime`**: durable agent workflows, checkpointing, retries, memory, orchestration. An agent step is an inference call through the gateway plus tool calls; the execution engine (Temporal vs. the event fabric) is an ADR with a prototype on each.
@@ -48,7 +144,7 @@ NeuroMesh follows the same split Envoy/Istio use. `services/gateway` is the **da
 
 ## Local development substrate
 
-NeuroMesh runs locally only for now; remote environments come much later ([#90](https://github.com/kokou-egbewatt/NeuroMesh/issues/90)). Everything runs on a single-node k3s cluster inside a WSL2 Ubuntu distro with a schedulable NVIDIA GPU, with: local image registry mirror, Windows relay for host-reachable ports, Helm chart per service under `infra/helm/`, deploy profiles under `deployments/local/`. The observability stack is VictoriaMetrics (metrics), VictoriaLogs (logs), Tempo (traces), Grafana, and the OpenTelemetry collector as agent plus gateway, all single-binary stores. The cluster tooling is [#21](https://github.com/kokou-egbewatt/NeuroMesh/issues/21), the observability stack is [#22](https://github.com/kokou-egbewatt/NeuroMesh/issues/22), and the ADR recording these decisions is [#23](https://github.com/kokou-egbewatt/NeuroMesh/issues/23).
+NeuroMesh runs locally only for now; remote environments come much later ([#90](https://github.com/kokou-egbewatt/NeuroMesh/issues/90)). Everything runs on a single-node k3s cluster inside a WSL2 Ubuntu distro with a schedulable NVIDIA GPU. Images are imported straight into the node's containerd (no registry), every UI is `https://<name>.neuromesh.localhost` through an Envoy Gateway edge (no relay or port-forward), and each service is a Helm chart under `infra/helm/`. [Substrate](substrate.md) draws it. The observability stack is VictoriaMetrics (metrics), VictoriaLogs (logs), Tempo (traces), Grafana, and the OpenTelemetry collector as agent plus gateway, all single-binary stores. The cluster tooling is [#21](https://github.com/kokou-egbewatt/NeuroMesh/issues/21), the observability stack is [#22](https://github.com/kokou-egbewatt/NeuroMesh/issues/22), and the ADR recording these decisions is [#23](https://github.com/kokou-egbewatt/NeuroMesh/issues/23).
 
 ## Decision record
 

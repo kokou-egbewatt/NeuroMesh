@@ -8,6 +8,16 @@ Serves `InferenceService` (`proto/neuromesh/v1/runtime.proto`) over a backend, p
 
 `internal/backend` holds the `Backend` interface and its implementations; `internal/service` serves `InferenceService` over one and maps its errors to gRPC codes, once for every adapter (#1).
 
+```mermaid
+flowchart LR
+    caller["gateway<br/>mutual TLS"] --> server["pkg/server<br/>TLS, health, metrics, tracing"]
+    server --> service["internal/service<br/>Route, StreamInference,<br/>errors to gRPC codes"]
+    service --> iface{{"Backend<br/>Complete, Stream"}}
+    iface --> stub["stub"]
+    iface --> ollama["Ollama adapter"] -->|"/api/generate"| ext["Ollama"]
+    iface -.-> later["vLLM, Triton, SGLang<br/>later"]
+```
+
 - **`stub`** (the default) answers `stub response for model <model>`. The golden files, the existing tests and the #13 baseline use it, so they need no model server.
 - **`ollama`** calls Ollama's `/api/generate`, streaming for `StreamInference`. Model names are Ollama tags, passed as they are. `temperature`, `max_tokens` and `stop` become Ollama's `temperature`, `num_predict` and `stop`; zero means Ollama's default.
 
