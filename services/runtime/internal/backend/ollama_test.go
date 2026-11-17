@@ -17,7 +17,7 @@ func fakeOllama(t *testing.T, h http.HandlerFunc) *Ollama {
 	t.Helper()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	o, err := NewOllama(OllamaConfig{BaseURL: srv.URL})
+	o, err := NewOllama(HTTPConfig{BaseURL: srv.URL})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestOllamaUnreachableIsUnavailableQuickly(t *testing.T) {
 	}
 	addr := l.Addr().String()
 	_ = l.Close()
-	o, err := NewOllama(OllamaConfig{BaseURL: "http://" + addr, DialTimeout: time.Second})
+	o, err := NewOllama(HTTPConfig{BaseURL: "http://" + addr, DialTimeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,13 +163,13 @@ func TestOllamaCancelIsTheCallersError(t *testing.T) {
 }
 
 func TestNewRejectsUnknownKindAndBadURL(t *testing.T) {
-	if _, err := New("vllm", OllamaConfig{}); err == nil {
+	if _, err := New(Config{Kind: "triton"}); err == nil {
 		t.Error("unknown kind accepted")
 	}
-	if _, err := New(KindOllama, OllamaConfig{BaseURL: "ollama:11434"}); err == nil {
+	if _, err := New(Config{Kind: KindOllama, Ollama: HTTPConfig{BaseURL: "ollama:11434"}}); err == nil {
 		t.Error("URL without scheme accepted")
 	}
-	if b, err := New("", OllamaConfig{}); err != nil || b.Name() != KindStub {
+	if b, err := New(Config{}); err != nil || b.Name() != KindStub {
 		t.Errorf("empty kind: %v %v", b, err)
 	}
 }
