@@ -10,6 +10,8 @@ use (
 	./packages/config
 	./packages/logging
 	./packages/middleware
+	./packages/telemetry
+	./packages/tracing
 	./packages/utils
 	./sdk/go
 	./services/gateway

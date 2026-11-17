@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -44,4 +45,17 @@ func StringEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// BoolEnv returns the environment variable named key as a bool ("true", "1", "yes" are true;
+// "false", "0", "no" are false), or fallback if it is unset, empty or anything else.
+func BoolEnv(key string, fallback bool) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
+	case "true", "1", "yes":
+		return true
+	case "false", "0", "no":
+		return false
+	default:
+		return fallback
+	}
 }

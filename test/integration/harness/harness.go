@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/kokou-egbewatt/NeuroMesh/packages/config"
+	"github.com/kokou-egbewatt/NeuroMesh/packages/telemetry"
 	"github.com/kokou-egbewatt/NeuroMesh/packages/utils/certgen"
 	sdk "github.com/kokou-egbewatt/NeuroMesh/sdk/go"
 	gateway "github.com/kokou-egbewatt/NeuroMesh/services/gateway/pkg/server"
@@ -32,6 +33,8 @@ import (
 type Options struct {
 	// Logger receives both services' logs. Nil discards them.
 	Logger *slog.Logger
+	// Metrics turns on both services' request metrics, on ephemeral ports; Stack.Metrics reads them.
+	Metrics bool
 }
 
 // Stack is a running runtime and gateway pair.
@@ -41,6 +44,8 @@ type Stack struct {
 	CAPEM       []byte
 	// Certs holds the "runtime" and "gateway" leaves, each with the CA.
 	Certs map[string]config.TLS
+	// Metrics holds the gateway's and the runtime's request metrics when Options.Metrics is set.
+	Metrics map[string]*telemetry.Metrics
 	// ServerName is the name the gateway's certificate is checked against; empty means
 	// "localhost", the in-process stack's.
 	ServerName string
@@ -82,7 +87,8 @@ func Start(ctx context.Context, opts Options) (_ *Stack, err error) {
 
 	rtTLS := s.Certs["runtime"]
 	rtTLS.AllowedClientNames = []string{"gateway"}
-	rt, err := runtime.New(runtime.Config{Addr: "127.0.0.1:0", TLS: rtTLS, ShutdownTimeout: time.Second}, log)
+	metrics := telemetry.Config{Enabled: opts.Metrics, Addr: "127.0.0.1:0"}
+	rt, err := runtime.New(runtime.Config{Addr: "127.0.0.1:0", TLS: rtTLS, ShutdownTimeout: time.Second, Metrics: metrics}, log)
 	if err != nil {
 		return nil, err
 	}
@@ -98,6 +104,7 @@ func Start(ctx context.Context, opts Options) (_ *Stack, err error) {
 		ShutdownTimeout: time.Second,
 		TLS:             config.TLS{CertFile: gwEdge.CertFile, KeyFile: gwEdge.KeyFile},
 		Runtime:         gateway.RuntimeConfig{Addr: s.RuntimeAddr, ServerName: "runtime", TLS: s.Certs["gateway"]},
+		Metrics:         metrics,
 	}, log)
 	if err != nil {
 		return nil, err
@@ -107,14 +114,20 @@ func Start(ctx context.Context, opts Options) (_ *Stack, err error) {
 	}
 	s.stopGateway = serve(gw.Serve)
 	s.GatewayURL = "https://" + gw.Addr().String()
+	if opts.Metrics {
+		s.Metrics = map[string]*telemetry.Metrics{"gateway": gw.Metrics(), "runtime": rt.Metrics()}
+	}
 	return s, nil
 }
 
 // Boot is Start for tests and benchmarks: it fails tb on error and closes the
 // stack in tb's cleanup.
-func Boot(tb testing.TB) *Stack {
+func Boot(tb testing.TB) *Stack { return BootWith(tb, Options{}) }
+
+// BootWith is Boot with options.
+func BootWith(tb testing.TB, opts Options) *Stack {
 	tb.Helper()
-	s, err := Start(context.Background(), Options{})
+	s, err := Start(context.Background(), opts)
 	if err != nil {
 		tb.Fatal(err)
 	}

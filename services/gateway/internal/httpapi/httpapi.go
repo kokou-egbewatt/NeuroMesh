@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -19,6 +20,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/kokou-egbewatt/NeuroMesh/packages/telemetry"
 	neuromeshv1 "github.com/kokou-egbewatt/NeuroMesh/sdk/go/gen/neuromesh/v1"
 	"github.com/kokou-egbewatt/NeuroMesh/services/gateway/internal/router"
 )
@@ -59,10 +61,17 @@ var (
 
 // Handler serves the gateway's HTTP API.
 type Handler struct {
-	router router.Router
-	limits Limits
-	log    *slog.Logger
-	mux    *http.ServeMux
+	router  router.Router
+	limits  Limits
+	log     *slog.Logger
+	mux     *http.ServeMux
+	metrics *telemetry.Metrics
+}
+
+// WithMetrics records every request in m (#10). Without it nothing is recorded.
+func (h *Handler) WithMetrics(m *telemetry.Metrics) *Handler {
+	h.metrics = m
+	return h
 }
 
 // New builds the handler.
@@ -88,9 +97,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 	rec.Header().Set(requestIDHeader, id)
 	h.mux.ServeHTTP(rec, r.WithContext(ctx))
+	route := RouteTemplate(r.URL.Path)
+	if route != "/healthz" {
+		h.metrics.Observe(route, strconv.Itoa(rec.status), time.Since(start), rec.status >= 500)
+	}
 	h.log.LogAttrs(ctx, slog.LevelInfo, "http",
 		slog.String("method", r.Method),
-		slog.String("http_route", routeTemplate(r.URL.Path)),
+		slog.String("http_route", route),
 		slog.Int("status", rec.status),
 		slog.String("request_id", ridFrom(ctx).id),
 		slog.Int64("duration_ms", time.Since(start).Milliseconds()))
@@ -260,7 +273,9 @@ func mapUpstream(c codes.Code) (int, apiError) {
 	}
 }
 
-func routeTemplate(path string) string {
+// RouteTemplate is the route a path matched, never the raw path, for logs, metric labels and span
+// names; anything unknown is "unmatched".
+func RouteTemplate(path string) string {
 	switch path {
 	case "/healthz", "/v1/route":
 		return path

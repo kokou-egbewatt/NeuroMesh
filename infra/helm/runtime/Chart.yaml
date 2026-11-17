@@ -3,4 +3,4 @@ name: runtime
 description: services/runtime on the local cluster (#14) - the gRPC inference service behind the gateway, mutual TLS, two replicas behind a headless Service.
 type: application
 version: 0.1.0
-appVersion: 0.7.0
+appVersion: 0.9.0

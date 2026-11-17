@@ -9,6 +9,42 @@ enforces it and `task ci:changelog` checks the file's structure.
 
 ## [Unreleased]
 
+## [0.9.0] - Tracing and Metrics End to End (2026-11-16)
+
+**One request is one trace across the gateway and the runtime, both services expose request
+metrics, and their log lines join their traces.** Closes
+[#22](https://github.com/kokou-egbewatt/NeuroMesh/issues/22);
+[#10](https://github.com/kokou-egbewatt/NeuroMesh/issues/10) except `/v1/stream`, which comes with
+the gateway's streaming endpoint (#4).
+
+### Added
+
+- **`packages/tracing`:** OpenTelemetry setup, OTLP to the collector gateway, the W3C propagator,
+  off when `otel.endpoint` is empty.
+- **`packages/telemetry`:** `neuromesh_requests_total`, `neuromesh_request_errors_total` and
+  `neuromesh_request_duration_seconds`, labeled by `service`, `rpc` and `code`, on an admin
+  `/metrics` port, off unless `metrics.enabled`.
+- **Gateway:** an HTTP server span named by route template, and a gRPC client span that carries the
+  trace to the runtime. **Runtime:** gRPC server spans, with the chunk count and first-chunk latency
+  on a stream's span, which ends when the stream closes. Health checks are neither traced nor counted.
+- **Tests:** one trace across both services (in-memory exporter), 10 successes and 5 injected failures
+  counted exactly, a sentinel prompt and request ID in no span attribute or metric label, the stream
+  span, and `TestClusterOneRequestAcrossTheStack`: one request's logs joined on its trace ID in
+  VictoriaLogs, the trace in Tempo through Grafana, and its count in VictoriaMetrics.
+- **`bench -instrumented` and `-trace-ratio`**, and the overhead in `BASELINE.md`.
+
+### Changed
+
+- **Logs** carry `trace_id` and `span_id` while a span is active, and the runtime's RPC lines carry
+  `request_id` (#9's correlation part).
+- **The charts** turn metrics on and send traces to the collector gateway, keeping 10% of new traces:
+  tracing every request cost up to 27% p50 at 64 clients, 10% nothing measurable. A client's sampled
+  `traceparent` is always followed.
+- **`docs/observability/fields.yaml`** allows the span attributes worth keeping (HTTP and gRPC method
+  and status, the stream attributes, `service.version`) and `chunks`; addresses, user agents and the
+  raw path stay out.
+- **`task test:cluster`** reads Grafana's password from the cluster.
+
 ## [0.8.0] - Logs and Traces on the Local Cluster (2026-11-16)
 
 **The rest of the observability profile: every pod's logs reach VictoriaLogs through the collector,

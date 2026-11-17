@@ -166,10 +166,10 @@ tasks:
       - bash scripts/services.sh up
 
   test:cluster:
-    desc: The golden path through the cluster-deployed gateway (after svc:up and edge:up)
+    desc: The golden path, and one request across logs, traces and metrics, on the cluster (after svc:up, edge:up, obs:up)
     dir: test/integration
     cmds:
-      - go test -tags cluster -run Cluster -count=1 .
+      - GRAFANA_PASSWORD="$(kubectl --context gpu-lab -n observability get secret vm-grafana -o jsonpath='{.data.admin-password}' | base64 -d)" go test -tags cluster -run Cluster -count=1 .
 
   svc:down:
     desc: Uninstall runtime and gateway from the local cluster
