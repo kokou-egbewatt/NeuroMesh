@@ -134,7 +134,6 @@ task svc:down
 - **Pod Security** is `restricted` in `neuromesh`: non-root (uid 65532, the distroless user, set numerically because the image names it), read-only root filesystem, no capabilities.
 - **Instrumentation** (#10). Both services export spans to the collector gateway (`OTEL_EXPORTER_OTLP_ENDPOINT`) and serve Prometheus `/metrics` on `:9090`, which vmagent scrapes through each chart's `VMServiceScrape`. One request is one trace: the gateway's HTTP span, its client span, and the runtime's server span as that client span's child. Both services' log lines carry `trace_id` and `span_id` while a span is active, so Grafana joins a trace to its logs. `task test:cluster` checks one request across all three stores.
 
-
 ### Ollama
 
 The runtime's first real backend (#1), from [`infra/helm/ollama`](../../infra/helm/ollama/), in the `neuromesh` namespace:
@@ -153,7 +152,30 @@ task ollama:down                # frees the GPU; the PVC keeps the models
 - **The first load is slow once.** On the RTX 5060 the first load of a model took 50 s, compiling CUDA kernels, and a reload with the compiled kernels 3 s; a warm request answers in under half a second. The init container runs one generation per model so the compile happens before Ollama is Ready, and `CUDA_CACHE_PATH` keeps the kernels on the PVC. The edge allows 120 s on `ollama.neuromesh.localhost` and 45 s on `gateway.neuromesh.localhost` (above the gateway's 30 s `upstream_timeout`) instead of Envoy's default 15 s, which cut the first load and made Ollama abandon it.
 - **Pod Security restricted** holds: uid 65532, a read-only root filesystem, `HOME` and `/tmp` on emptyDirs.
 - **`https://ollama.neuromesh.localhost`** is Ollama's API through the edge. The streaming cluster test uses it, because the gateway has no streaming route yet (#4).
-- **`task test:cluster` follows the runtime's backend.** On the stub it runs the golden request; on Ollama it skips that and runs the Ollama tests. The scaled-to-zero test scales Ollama down, checks for a 503 within the dial timeout, and scales it back up before it returns.
+- **`task test:cluster` follows the runtime's backend.** On the stub it runs the golden request; on Ollama or vLLM it skips that and runs the backend tests. The scaled-to-zero test scales the backend down, checks for a 503 within the dial timeout, and scales it back up before it returns.
+
+### vLLM
+
+The runtime's second backend (#105), from [`infra/helm/vllm`](../../infra/helm/vllm/), in the `neuromesh` namespace. It holds the GPU as Ollama does, so only one of them runs:
+
+```sh
+task ollama:down                # vllm:up refuses while Ollama holds the GPU
+task vllm:up                    # vLLM on the GPU; an init container downloads Qwen/Qwen2.5-0.5B-Instruct first
+BACKEND=vllm task svc:up        # the runtime on backend.kind vllm, at http://vllm:8000
+task vllm:status                # the pod, the runtime's backend, and https://vllm.neuromesh.localhost/v1/models
+task test:cluster               # on vLLM: real output, 404 and 400, streaming, scaled to zero
+task vllm:down                  # frees the GPU; the PVC keeps the model and compiled kernels
+```
+
+- **The image is a GPU decision.** The RTX 5060 is sm_120 and needs a CUDA 12.8+ build; `vllm/vllm-openai:v0.12.0` is CUDA 12.9. v0.9 and earlier fail at the first kernel with "no kernel image is available for execution on the device". A new tag needs its flags and `tritonLibcudaPath` checked, both of which change between versions.
+- **It takes its memory up front.** vLLM claims `gpuMemoryUtilization` of the card's total VRAM at start, for weights, activations and the KV cache, and refuses to start if that much isn't free. The chart's 0.5 is about 4 GB, sized for a desktop holding 1.4 to 2.3 GB. A game holding 3 GB more leaves too little: close it, or lower the value.
+- **The first request after start must work, not just `/health`.** vLLM compiles small kernels at request time and links them with `-lcuda`. The NVIDIA runtime injects only `libcuda.so.1`, and under WSL the unversioned file is only in the image's CUDA compat directory, so the chart points `TRITON_LIBCUDA_PATH` there. Without it the first generation kills the engine while health stays green; the cluster tests send real requests for that reason.
+- **Pod Security restricted** holds: uid 65532, a read-only root filesystem, every path the engine writes on the PVC or an emptyDir, and `/dev/shm` as a 1 GiB memory emptyDir (the container default of 64 MiB hangs it). The image has no passwd entry for that uid, so `USER` and `LOGNAME` are set: torch reads them before it looks the user up.
+- **Offline after the download.** The init container fetches the model from Hugging Face into the `vllm-data` PVC once; the server runs with `HF_HUB_OFFLINE=1`. Model names in requests are the repo id.
+- **`--enforce-eager`** (no CUDA graphs) by default, for a smaller, faster start on a node that shares host memory with the desktop. The benchmark turns it off.
+- **No service links.** The Service is named `vllm`, so Kubernetes would inject `VLLM_PORT=tcp://<ip>:8000` into the pod. vLLM reads that as its own port setting and exits at start. The chart sets `enableServiceLinks: false`.
+- **A game on the GPU hangs generation.** With a game holding the card (221 MiB free), vLLM started and passed `/health`, then the first request ran at 0 tok/s with the engine spinning one CPU core, and stayed that way after the game closed. Close the game, then `kubectl -n neuromesh rollout restart deploy/vllm`.
+- **What it costs here,** Qwen2.5-0.5B at 0.5: 0.93 GiB of weights and 1.63 GiB of KV cache (142,032 tokens). The first start after the download takes about a minute to load and 8.8 s to set up the engine; a restart with warm caches takes 0.8 s and 2.3 s. The first request after a fresh start compiles kernels for tens of seconds; after that a short answer takes about 0.4 s end to end through the edge.
 
 ## When something is wrong
 

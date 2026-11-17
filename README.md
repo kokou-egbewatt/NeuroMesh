@@ -47,7 +47,7 @@ It is built in seven phases, each a GitHub milestone:
 - 🔐 TLS on every hop: HTTPS at the gateway edge, mutual TLS from gateway to runtime with a caller allow-list on the certificate common name
 - 🪪 Certificates in the cert-manager Secret layout (`tls.crt`, `tls.key`, `ca.crt`): cert-manager mints them on a cluster, `task certs:dev` outside one
 - 🚦 A data-plane gateway that validates and bounds every request and answers in one JSON error shape, never leaking upstream detail
-- 🧠 A runtime with pluggable backends: a stub for tests and baselines, and Ollama on the GPU for real output
+- 🧠 A runtime with pluggable backends: a stub for tests and baselines, and Ollama or vLLM on the GPU for real output
 - 📊 Metrics, logs and traces on the local cluster: VictoriaMetrics, VictoriaLogs, Tempo and Grafana, one trace per request
 - ☸️ A single-node k3s cluster in WSL2 with a schedulable GPU, every UI at `https://<name>.neuromesh.localhost`
 - 🧭 Control plane and data plane split by rule: the gateway never calls a management service in the request path ([ADR-0002](docs/adr/0002-control-plane-data-plane-split.md))

@@ -19,9 +19,11 @@ flowchart LR
         backend{"backend.kind"}
         stub["stub"]
         ollama["Ollama adapter"]
+        vllm["vLLM adapter"]
     end
 
     model["Ollama<br/>qwen2.5:0.5b on the GPU"]
+    model2["vLLM<br/>Qwen2.5-0.5B-Instruct on the GPU"]
 
     client -->|"HTTPS"| edge
     edge -->|"new TLS, dev CA<br/>(BackendTLSPolicy)"| httpapi
@@ -30,10 +32,12 @@ flowchart LR
     svc --> backend
     backend -->|stub| stub
     backend -->|ollama| ollama
+    backend -->|vllm| vllm
     ollama -->|"HTTP /api/generate"| model
+    vllm -->|"HTTP /v1/chat/completions"| model2
 ```
 
-- **TLS on every hop.** The edge terminates the client's TLS and opens a new connection to the gateway, checking its certificate against the dev CA. The gateway calls the runtime with a client certificate, and the runtime accepts only the common names on `tls.allowed_client_names`. Ollama is plain HTTP inside the namespace.
+- **TLS on every hop.** The edge terminates the client's TLS and opens a new connection to the gateway, checking its certificate against the dev CA. The gateway calls the runtime with a client certificate, and the runtime accepts only the common names on `tls.allowed_client_names`. Ollama and vLLM are plain HTTP inside the namespace.
 - **The request ID** is the client's `X-Request-Id` when it is valid, otherwise one the edge or the gateway generates. Every service logs it, and the response carries it.
 - **One trace** per request: the gateway's HTTP server span, its gRPC client span, and the runtime's server span under it ([Observability](observability.md)).
 
@@ -59,7 +63,7 @@ sequenceDiagram
     E-->>C: 200 JSON
 ```
 
-`StreamInference` is the same path with Ollama's NDJSON turned into one chunk per token, then a final chunk with usage. The gateway has no streaming endpoint yet (#4).
+The sequence shows Ollama; vLLM is the same with `/v1/chat/completions`. `StreamInference` is the same path with the backend's stream (Ollama's NDJSON, vLLM's server-sent events) turned into one chunk per token, then a final chunk with usage. The gateway has no streaming endpoint yet (#4).
 
 ## Timeouts
 
@@ -69,9 +73,9 @@ Each one sits above the one it waits on, so the hop closest to the failure answe
 | --- | --- | --- |
 | edge to gateway | 45 s | `infra/helm/gateway`, HTTPRoute `timeouts.request` |
 | gateway to runtime | 30 s | gateway `limits.upstream_timeout`; past it, 504 with the request ID |
-| runtime to Ollama, connect | 3 s | runtime `backend.ollama.dial_timeout`; past it, 503 `backend_unavailable` |
-| runtime to Ollama, first byte | 60 s | runtime `backend.ollama.response_header_timeout` |
-| edge to Ollama, direct | 120 s | `infra/helm/ollama`, HTTPRoute `timeouts.request` |
+| runtime to the backend, connect | 3 s | runtime `backend.<kind>.dial_timeout`; past it, 503 `backend_unavailable` |
+| runtime to the backend, first byte | 60 s | runtime `backend.<kind>.response_header_timeout` |
+| edge to Ollama or vLLM, direct | 120 s | `infra/helm/ollama`, `infra/helm/vllm`, HTTPRoute `timeouts.request` |
 
 Envoy's default of 15 s is replaced on both routes: it cut the first model load (50 s on the RTX 5060) and made Ollama abandon it.
 
@@ -81,10 +85,10 @@ The runtime turns every backend failure into a gRPC code in one place, and the g
 
 ```mermaid
 flowchart LR
-    subgraph ollama["Ollama says"]
+    subgraph ollama["Ollama or vLLM says"]
         o1["unreachable, 502, 503,<br/>stream cut off"]
-        o2["404 model not pulled"]
-        o3["400"]
+        o2["404 model not pulled<br/>or not served"]
+        o3["400, prompt past<br/>max_model_len"]
         o4["anything else"]
     end
     subgraph grpc["runtime returns"]

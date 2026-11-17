@@ -67,7 +67,7 @@ flowchart TB
     subgraph nm["neuromesh (Pod Security restricted)"]
         gw["gateway"]
         rt["runtime x2"]
-        ol["Ollama, optional"]
+        ol["Ollama or vLLM, optional"]
     end
     subgraph obs["observability"]
         stack["VictoriaMetrics stack, VictoriaLogs,<br/>Tempo, OTel collector, dcgm-exporter"]
@@ -84,6 +84,7 @@ The node advertises one `nvidia.com/gpu`. Whatever requests it holds the card, a
 | Holder | Requests the GPU | How |
 | --- | --- | --- |
 | Ollama | yes | `runtimeClassName: nvidia` plus `nvidia.com/gpu: 1`; `task ollama:down` frees it |
+| vLLM | yes | the same; `task vllm:down` frees it. It also takes a fixed share of the card's memory at start (`gpuMemoryUtilization`) |
 | infinity-bench runs | yes | same cluster; need the GPU free first |
 | dcgm-exporter | no | the GPU observer exception: reads counters, opens no CUDA context |
 

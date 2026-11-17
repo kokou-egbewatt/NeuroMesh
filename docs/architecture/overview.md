@@ -4,7 +4,7 @@ NeuroMesh is an AI runtime operating system: a unified platform for inference or
 
 ## What runs today
 
-Phase 1 so far, on the local cluster. Solid boxes run; the dashed one is a real backend that's optional (`task ollama:up`).
+Phase 1 so far, on the local cluster. Solid boxes run; the dashed ones are real backends, optional and one at a time (`task ollama:up` or `task vllm:up`).
 
 ```mermaid
 flowchart LR
@@ -18,6 +18,7 @@ flowchart LR
             gw["gateway<br/>HTTPS :8443"]
             rt["runtime x2<br/>gRPC :50051"]
             ol["Ollama<br/>:11434, GPU"]
+            vl2["vLLM<br/>:8000, GPU"]
         end
         subgraph obs["observability"]
             col["OTel collector<br/>agent + gateway"]
@@ -34,7 +35,9 @@ flowchart LR
     edge -->|"TLS, re-encrypted"| gw
     gw -->|"mTLS, InferenceService"| rt
     rt -.->|"HTTP /api/generate"| ol
+    rt -.->|"HTTP /v1/chat/completions"| vl2
     ol -.-> gpu
+    vl2 -.-> gpu
     dcgm -.->|"reads counters"| gpu
 
     gw & rt -->|"OTLP spans"| col
@@ -129,7 +132,7 @@ NeuroMesh follows the same split Envoy/Istio use. `services/gateway` is the **da
 
 ## Service responsibility map
 
-- **`services/runtime`**: unified inference abstraction over Triton, vLLM, TensorRT-LLM, Ollama, SGLang. Handles batching, streaming, retries, model abstraction. Today: a `Backend` interface with the stub and Ollama behind it.
+- **`services/runtime`**: unified inference abstraction over Triton, vLLM, TensorRT-LLM, Ollama, SGLang. Handles batching, streaming, retries, model abstraction. Today: a `Backend` interface with the stub, Ollama and vLLM behind it.
 - **`services/gateway`**: data plane traffic entrypoint. Handles auth, quotas, rate limiting, routing, streaming sessions, all against locally cached config. "Envoy for AI inference."
 - **`services/stream-engine`**: WebRTC ingestion, multimodal pipelines, realtime inference, adaptive frame dropping.
 - **`services/agent-runtime`**: durable agent workflows, checkpointing, retries, memory, orchestration. An agent step is an inference call through the gateway plus tool calls; the execution engine (Temporal vs. the event fabric) is an ADR with a prototype on each.
