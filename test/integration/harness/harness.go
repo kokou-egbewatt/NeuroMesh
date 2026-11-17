@@ -35,6 +35,8 @@ type Options struct {
 	Logger *slog.Logger
 	// Metrics turns on both services' request metrics, on ephemeral ports; Stack.Metrics reads them.
 	Metrics bool
+	// Backend is the runtime's backend; the zero value is the stub.
+	Backend runtime.BackendConfig
 }
 
 // Stack is a running runtime and gateway pair.
@@ -88,7 +90,7 @@ func Start(ctx context.Context, opts Options) (_ *Stack, err error) {
 	rtTLS := s.Certs["runtime"]
 	rtTLS.AllowedClientNames = []string{"gateway"}
 	metrics := telemetry.Config{Enabled: opts.Metrics, Addr: "127.0.0.1:0"}
-	rt, err := runtime.New(runtime.Config{Addr: "127.0.0.1:0", TLS: rtTLS, ShutdownTimeout: time.Second, Metrics: metrics}, log)
+	rt, err := runtime.New(runtime.Config{Addr: "127.0.0.1:0", TLS: rtTLS, ShutdownTimeout: time.Second, Metrics: metrics, Backend: opts.Backend}, log)
 	if err != nil {
 		return nil, err
 	}

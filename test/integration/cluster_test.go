@@ -49,6 +49,9 @@ func clusterClient(t *testing.T) (*http.Client, string) {
 }
 
 func TestClusterGoldenRoute(t *testing.T) {
+	if b := os.Getenv("NEUROMESH_BACKEND"); b != "" && b != "stub" {
+		t.Skipf("the golden file is the stub's answer; the runtime is on %s", b)
+	}
 	c, url := clusterClient(t)
 	r := post(t, c, url+"/v1/route", "golden-1", `{"model":"llama3","prompt":"hello there world"}`)
 	if r.status != http.StatusOK {
@@ -83,6 +86,7 @@ func TestClusterOneRequestAcrossTheStack(t *testing.T) {
 	if domain == "" {
 		domain = "neuromesh.localhost"
 	}
+	c.Timeout = 90 * time.Second // on Ollama, the first request may load the model
 	rid := fmt.Sprintf("stack-%d", time.Now().UnixNano())
 	// A sampled traceparent of our own: the services sample 10% of new traces but always follow a
 	// parent's decision, so this request is traced, under a trace ID known in advance.
@@ -91,7 +95,7 @@ func TestClusterOneRequestAcrossTheStack(t *testing.T) {
 	_, _ = rand.Read(tid[:])
 	_, _ = rand.Read(sid[:])
 	want := hex.EncodeToString(tid[:])
-	req, _ := http.NewRequest(http.MethodPost, gatewayURL+"/v1/route", strings.NewReader(`{"model":"llama3","prompt":"hello there world"}`))
+	req, _ := http.NewRequest(http.MethodPost, gatewayURL+"/v1/route", strings.NewReader(`{"model":"`+routeModel()+`","prompt":"hello there world","max_tokens":8}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Request-Id", rid)
 	req.Header.Set("traceparent", "00-"+want+"-"+hex.EncodeToString(sid[:])+"-01")
