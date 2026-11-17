@@ -9,6 +9,33 @@ enforces it and `task ci:changelog` checks the file's structure.
 
 ## [Unreleased]
 
+## [0.11.0] - vLLM Backend (2026-11-17)
+
+**vLLM as the runtime's second real backend, on the GPU in the local cluster, behind the same
+interface and error mapping as Ollama. Closes #105.**
+
+### Added
+
+- **`internal/backend/vllm.go`:** the OpenAI-compatible chat API, streamed over SSE with usage in the
+  last event. Both of vLLM's error shapes map to the backend errors: 404 is model not found, 400
+  (a prompt past `max_model_len`) is invalid, 502 and 503 are unavailable.
+- **`infra/helm/vllm`:** `vllm/vllm-openai:v0.12.0` (CUDA 12.9, for sm_120) under Pod Security
+  restricted, an init container that downloads the model to a PVC once, and offline serving after
+  that. `task vllm:up`, `vllm:down` and `vllm:status`.
+- **Cluster tests on either backend:** real output, unknown model, a prompt past the context limit,
+  streaming in order, and the backend scaled to zero.
+
+### Changed
+
+- **`internal/backend/http.go`:** the HTTP client, URL check and status mapping shared by Ollama and
+  vLLM. `backend.Config` holds one block per backend; the runtime's `backend.ollama` and
+  `backend.vllm` config take the same fields, and `VLLM_BASE_URL` sets the vLLM one.
+- **`ollama:up` and `vllm:up`** each refuse while the other holds the GPU.
+- **`ollama_cluster_test.go`** is now `backend_cluster_test.go`; the stream test asks for near-greedy
+  output so the answer is stable.
+- **Docs:** the runtime README, the architecture diagrams and the local cluster guide cover vLLM,
+  including what it needs to run here and what it costs.
+
 ## [0.10.1] - Architecture Diagrams (2026-11-17)
 
 **Mermaid diagrams of the whole system and of each part, and the architecture docs brought up to
