@@ -47,6 +47,9 @@ It is built in seven phases, each a GitHub milestone:
 - 🔐 TLS on every hop: HTTPS at the gateway edge, mutual TLS from gateway to runtime with a caller allow-list on the certificate common name
 - 🪪 Certificates in the cert-manager Secret layout (`tls.crt`, `tls.key`, `ca.crt`): cert-manager mints them on a cluster, `task certs:dev` outside one
 - 🚦 A data-plane gateway that validates and bounds every request and answers in one JSON error shape, never leaking upstream detail
+- 🧠 A runtime with pluggable backends: a stub for tests and baselines, and Ollama on the GPU for real output
+- 📊 Metrics, logs and traces on the local cluster: VictoriaMetrics, VictoriaLogs, Tempo and Grafana, one trace per request
+- ☸️ A single-node k3s cluster in WSL2 with a schedulable GPU, every UI at `https://<name>.neuromesh.localhost`
 - 🧭 Control plane and data plane split by rule: the gateway never calls a management service in the request path ([ADR-0002](docs/adr/0002-control-plane-data-plane-split.md))
 - 📜 One gRPC contract in `proto/`, linted by buf, with committed generated code checked for drift
 - 🧩 A polyglot monorepo where every Go module builds on its own ([ADR-0001](docs/adr/0001-monorepo-structure-and-phasing.md))
@@ -71,7 +74,10 @@ The full loop (debugging, tests, hooks, releases) is in [Dev loop](docs/onboardi
 
 ## 📚 Documentation
 
-- 📐 [Architecture Overview](docs/architecture/overview.md): phase roadmap, service responsibility map, local substrate
+- 📐 [Architecture Overview](docs/architecture/overview.md): what runs today and where it is going, as diagrams, plus the phase roadmap
+  - [Request path](docs/architecture/request-path.md): edge to gateway to runtime to backend, timeouts, errors
+  - [Substrate](docs/architecture/substrate.md): Windows, WSL2, k3s and the GPU
+  - [Observability](docs/architecture/observability.md): metrics, logs, traces and alerts
 - 🧰 [How the tooling works](docs/onboarding/tooling.md): the layers, version sources, every script, and how to add things
 - 🔁 [Dev loop](docs/onboarding/dev-loop.md): live reload, calling the stack, debugging, tests, hooks, releases
 - 🧪 [Local CI](docs/onboarding/local-ci.md): running the workflows with act, and each gate on its own

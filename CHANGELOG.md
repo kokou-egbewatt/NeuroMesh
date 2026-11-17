@@ -9,6 +9,30 @@ enforces it and `task ci:changelog` checks the file's structure.
 
 ## [Unreleased]
 
+## [0.10.1] - Architecture Diagrams (2026-11-17)
+
+**Mermaid diagrams of the whole system and of each part, and the architecture docs brought up to
+date with what runs.**
+
+### Added
+
+- **`docs/architecture/overview.md`:** what runs today on the local cluster, and every planned service
+  in its plane.
+- **`docs/architecture/request-path.md`:** the hops from client to model, the request in time, the
+  timeout at each hop, and how backend errors become gRPC codes and then HTTP.
+- **`docs/architecture/substrate.md`:** the layers from the Windows driver to GPU pods, how Windows
+  reaches the cluster, the namespaces, and who holds the GPU.
+- **`docs/architecture/observability.md`:** how metrics, logs, traces and alerts reach Grafana, and
+  how one request is found in all three stores.
+- **Service READMEs:** a diagram of the gateway's and the runtime's packages.
+
+### Changed
+
+- **`overview.md`** no longer describes a registry mirror and a Windows relay; the cluster uses
+  neither.
+- **Root README:** the runtime's backends, the observability stack and the cluster in Features, and
+  links to the new pages.
+
 ## [0.10.0] - Ollama Backend (2026-11-16)
 
 **The runtime generates real text: a `Backend` interface with the stub and Ollama behind it, and
