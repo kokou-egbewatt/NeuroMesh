@@ -14,6 +14,8 @@ DISTRO="${NEUROMESH_DISTRO:-Ubuntu}"
 NS=neuromesh
 CERTS=certs/dev
 DOMAIN=neuromesh.localhost
+# The runtime's backend (#1): stub, or ollama once `task ollama:up` has run.
+BACKEND="${BACKEND:-stub}"
 
 die() { echo "error: $*" >&2; exit 1; }
 k() { kubectl --context "$CONTEXT" "$@"; }
@@ -62,8 +64,8 @@ up() {
   k -n "$NS" create configmap neuromesh-ca --from-file=ca.crt="$CERTS/ca.crt" \
     --dry-run=client -o yaml | k apply -f - >/dev/null
 
-  echo "runtime, then gateway"
-  h upgrade --install runtime infra/helm/runtime -n "$NS" --set image.tag="$t" --wait --timeout 3m | grep -E "^STATUS"
+  echo "runtime (backend $BACKEND), then gateway"
+  h upgrade --install runtime infra/helm/runtime -n "$NS" --set image.tag="$t" --set backend.kind="$BACKEND" --wait --timeout 3m | grep -E "^STATUS"
   h upgrade --install gateway infra/helm/gateway -n "$NS" --set image.tag="$t" --wait --timeout 3m | grep -E "^STATUS"
   status
 }
@@ -152,11 +154,46 @@ YAML
   [ "$(k -n "$NS" get job "$job" -o jsonpath='{.status.succeeded}')" = 1 ] || die "the runs were not repeatable, or the job failed (kubectl -n $NS logs job/$job)"
 }
 
+# Ollama for backend.kind ollama (#1). The init container pulls the chart's models into a PVC, so the
+# first install takes minutes (the image is a few GB) and later ones seconds.
+ollama_up() {
+  need_cluster
+  k apply -f infra/kubernetes/neuromesh/namespace.yaml >/dev/null
+  echo "ollama (first install pulls the image and the models: several minutes)"
+  h upgrade --install ollama infra/helm/ollama -n "$NS" --wait --timeout 30m | grep -E "^STATUS"
+  ollama_status
+  echo "next: BACKEND=ollama task svc:up"
+}
+
+ollama_down() {
+  need_cluster
+  # The PVC is kept, so the models survive; kubectl -n $NS delete pvc ollama-models removes them.
+  h uninstall ollama -n "$NS" --ignore-not-found
+}
+
+# The backend the deployed runtime uses; task test:cluster picks the tests that apply from it.
+runtime_backend() {
+  k -n "$NS" get deploy runtime -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="BACKEND_KIND")].value}' 2>/dev/null || true
+}
+
+ollama_status() {
+  need_cluster
+  k -n "$NS" get pods -l app.kubernetes.io/name=ollama -o wide
+  echo "runtime backend: $(runtime_backend)"
+  local code
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 --ssl-no-revoke --cacert "$CERTS/ca.crt" "https://ollama.$DOMAIN/api/tags" || true)
+  echo "https://ollama.$DOMAIN/api/tags: $code"
+}
+
 case "${1:-}" in
   up) up ;;
   bench) shift; bench "$@" ;;
   down) down ;;
   status) status ;;
+  ollama-up) ollama_up ;;
+  ollama-down) ollama_down ;;
+  ollama-status) ollama_status ;;
+  backend) need_cluster; runtime_backend ;;
   image) need_cluster; image "${2:?usage: scripts/services.sh image runtime|gateway}" ;;
-  *) die "usage: scripts/services.sh up|down|status|bench [bench flags]|image <runtime|gateway>" ;;
+  *) die "usage: scripts/services.sh up|down|status|ollama-up|ollama-down|ollama-status|bench [bench flags]|image <runtime|gateway>" ;;
 esac

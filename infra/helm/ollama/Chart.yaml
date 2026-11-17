@@ -1,0 +1,6 @@
+apiVersion: v2
+name: ollama
+description: Ollama on the local cluster (#1) - the runtime's first real backend, on the GPU through the nvidia RuntimeClass, models pulled into a PVC before it serves.
+type: application
+version: 0.1.0
+appVersion: 0.40.15
