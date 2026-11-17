@@ -14,7 +14,7 @@ DISTRO="${NEUROMESH_DISTRO:-Ubuntu}"
 NS=neuromesh
 CERTS=certs/dev
 DOMAIN=neuromesh.localhost
-# The runtime's backend (#1): stub, or ollama once `task ollama:up` has run.
+# The runtime's backend: stub, ollama once `task ollama:up` has run (#1), or vllm after `task vllm:up` (#105).
 BACKEND="${BACKEND:-stub}"
 
 die() { echo "error: $*" >&2; exit 1; }
@@ -158,6 +158,9 @@ YAML
 # first install takes minutes (the image is a few GB) and later ones seconds.
 ollama_up() {
   need_cluster
+  if k -n "$NS" get deploy vllm >/dev/null 2>&1; then
+    die "vllm holds the GPU; run task vllm:down first"
+  fi
   k apply -f infra/kubernetes/neuromesh/namespace.yaml >/dev/null
   echo "ollama (first install pulls the image and the models: several minutes)"
   h upgrade --install ollama infra/helm/ollama -n "$NS" --wait --timeout 30m | grep -E "^STATUS"
@@ -185,6 +188,35 @@ ollama_status() {
   echo "https://ollama.$DOMAIN/api/tags: $code"
 }
 
+# vLLM for backend.kind vllm (#105). It holds the GPU as Ollama does, so only one of them runs, and it
+# refuses to start unless gpuMemoryUtilization of the card is free.
+vllm_up() {
+  need_cluster
+  if k -n "$NS" get deploy ollama >/dev/null 2>&1; then
+    die "ollama holds the GPU; run task ollama:down first"
+  fi
+  k apply -f infra/kubernetes/neuromesh/namespace.yaml >/dev/null
+  echo "vllm (first install pulls the image and downloads the model: many minutes)"
+  h upgrade --install vllm infra/helm/vllm -n "$NS" --wait --timeout 60m | grep -E "^STATUS"
+  vllm_status
+  echo "next: BACKEND=vllm task svc:up"
+}
+
+vllm_down() {
+  need_cluster
+  # The PVC is kept, so the model and the compiled kernels survive; kubectl -n $NS delete pvc vllm-data removes them.
+  h uninstall vllm -n "$NS" --ignore-not-found
+}
+
+vllm_status() {
+  need_cluster
+  k -n "$NS" get pods -l app.kubernetes.io/name=vllm -o wide
+  echo "runtime backend: $(runtime_backend)"
+  local code
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 --ssl-no-revoke --cacert "$CERTS/ca.crt" "https://vllm.$DOMAIN/v1/models" || true)
+  echo "https://vllm.$DOMAIN/v1/models: $code"
+}
+
 case "${1:-}" in
   up) up ;;
   bench) shift; bench "$@" ;;
@@ -193,7 +225,10 @@ case "${1:-}" in
   ollama-up) ollama_up ;;
   ollama-down) ollama_down ;;
   ollama-status) ollama_status ;;
+  vllm-up) vllm_up ;;
+  vllm-down) vllm_down ;;
+  vllm-status) vllm_status ;;
   backend) need_cluster; runtime_backend ;;
   image) need_cluster; image "${2:?usage: scripts/services.sh image runtime|gateway}" ;;
-  *) die "usage: scripts/services.sh up|down|status|ollama-up|ollama-down|ollama-status|bench [bench flags]|image <runtime|gateway>" ;;
+  *) die "usage: scripts/services.sh up|down|status|ollama-up|ollama-down|ollama-status|vllm-up|vllm-down|vllm-status|bench [bench flags]|image <runtime|gateway>" ;;
 esac

@@ -1,0 +1,149 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vllm-data
+  labels: { app.kubernetes.io/name: vllm, app.kubernetes.io/part-of: neuromesh }
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.storage.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests: { storage: {{ .Values.storage.size }} }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm
+  labels: { app.kubernetes.io/name: vllm, app.kubernetes.io/part-of: neuromesh }
+spec:
+  replicas: 1
+  # The first rollout pulls a multi-GB image and the model.
+  progressDeadlineSeconds: 3600
+  # One pod at a time: the PVC is ReadWriteOnce and the GPU is one.
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app.kubernetes.io/name: vllm }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: vllm, app.kubernetes.io/part-of: neuromesh }
+    spec:
+      {{- if .Values.gpu.enabled }}
+      runtimeClassName: nvidia
+      {{- end }}
+      # No service environment variables: the Service named vllm would inject
+      # VLLM_PORT=tcp://<ip>:8000, which vLLM reads as its own setting and fails to start on.
+      enableServiceLinks: false
+      # Pod Security restricted. The image expects root; everything it writes is on a volume.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: { type: RuntimeDefault }
+      initContainers:
+        - name: download
+          image: {{ .Values.image }}
+          command: [python3, -c]
+          args:
+            - |
+              import os, pathlib
+              from huggingface_hub import snapshot_download
+              d = pathlib.Path("/data/models") / os.environ["MODEL"]
+              if not (d / ".complete").exists():
+                  snapshot_download(os.environ["MODEL"], local_dir=d,
+                                    allow_patterns=["*.json", "*.safetensors", "*.txt", "*.model", "*.tiktoken"])
+                  (d / ".complete").touch()
+              print("model ready:", d)
+          env:
+            {{- include "vllm.env" . | nindent 12 }}
+          securityContext: &container
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts: &mounts
+            - { name: data, mountPath: /data }
+            - { name: tmp, mountPath: /tmp }
+            - { name: shm, mountPath: /dev/shm }
+      containers:
+        - name: vllm
+          image: {{ .Values.image }}
+          command: [python3, -m, vllm.entrypoints.openai.api_server]
+          args:
+            - --model=/data/models/$(MODEL)
+            - --served-model-name=$(MODEL)
+            - --host=0.0.0.0
+            - --port=8000
+            - --gpu-memory-utilization={{ .Values.engine.gpuMemoryUtilization }}
+            - --max-model-len={{ .Values.engine.maxModelLen }}
+            {{- if .Values.engine.enforceEager }}
+            - --enforce-eager
+            {{- end }}
+            {{- with .Values.engine.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          env:
+            {{- include "vllm.env" . | nindent 12 }}
+            # The weights are on the PVC; nothing reaches Hugging Face at start.
+            - { name: HF_HUB_OFFLINE, value: "1" }
+            {{- with .Values.tritonLibcudaPath }}
+            - { name: TRITON_LIBCUDA_PATH, value: {{ . | quote }} }
+            {{- end }}
+          ports:
+            - { name: http, containerPort: 8000 }
+          # Loading the weights and sizing the KV cache takes a minute or more; the startup probe
+          # keeps liveness from killing a pod that is still loading.
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            failureThreshold: 90
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 30
+            failureThreshold: 3
+          securityContext: *container
+          resources:
+            {{- $r := deepCopy .Values.resources }}
+            {{- if .Values.gpu.enabled }}
+            {{- $_ := set $r.limits "nvidia.com/gpu" 1 }}
+            {{- end }}
+            {{- toYaml $r | nindent 12 }}
+          volumeMounts: *mounts
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: vllm-data }
+        - { name: tmp, emptyDir: {} }
+        - name: shm
+          emptyDir: { medium: Memory, sizeLimit: {{ .Values.shmSize }} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm
+  labels: { app.kubernetes.io/name: vllm, app.kubernetes.io/part-of: neuromesh }
+spec:
+  selector: { app.kubernetes.io/name: vllm }
+  ports:
+    - { name: http, port: 8000, targetPort: http }
+{{- if and .Values.edge.enabled (.Capabilities.APIVersions.Has "gateway.networking.k8s.io/v1/HTTPRoute") }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: vllm
+  labels: { app.kubernetes.io/name: vllm, app.kubernetes.io/part-of: neuromesh }
+spec:
+  parentRefs:
+    - name: {{ .Values.edge.gateway.name }}
+      namespace: {{ .Values.edge.gateway.namespace }}
+      sectionName: https
+  hostnames: ["vllm.{{ .Values.edge.domain }}"]
+  rules:
+    - matches: [{ path: { type: PathPrefix, value: / } }]
+      # Envoy's default 15 s; a streamed answer counts from its start.
+      timeouts: { request: 120s }
+      backendRefs: [{ name: vllm, port: 8000 }]
+{{- end }}

@@ -34,7 +34,9 @@ otel:
   sampleRatio: "0.1"
 
 # What generates the text (#1): stub, the fixed answer the golden files and the baseline use, or
-# ollama, the Ollama chart in this namespace (`task ollama:up`). `BACKEND=ollama task svc:up` sets it.
+# ollama or vllm, the charts in this namespace (`task ollama:up`, `task vllm:up`). `BACKEND=<kind> task
+# svc:up` sets it.
 backend:
   kind: stub
   ollamaURL: http://ollama:11434
+  vllmURL: http://vllm:8000

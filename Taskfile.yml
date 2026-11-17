@@ -161,7 +161,7 @@ tasks:
       - bash scripts/services.sh image gateway
 
   svc:up:
-    desc: Build, import and deploy runtime (2 replicas) and gateway to the local cluster (BACKEND=ollama after ollama:up)
+    desc: Build, import and deploy runtime (2 replicas) and gateway to the local cluster (BACKEND=ollama after ollama:up, BACKEND=vllm after vllm:up)
     cmds:
       - bash scripts/services.sh up
 
@@ -180,8 +180,23 @@ tasks:
     cmds:
       - bash scripts/services.sh ollama-status
 
+  vllm:up:
+    desc: Install vLLM in the neuromesh namespace on the GPU, the model downloaded into a PVC (#105)
+    cmds:
+      - bash scripts/services.sh vllm-up
+
+  vllm:down:
+    desc: Uninstall vLLM and free the GPU, keeping the model and compiled kernels
+    cmds:
+      - bash scripts/services.sh vllm-down
+
+  vllm:status:
+    desc: vLLM's pod, the runtime's backend, and https://vllm.neuromesh.localhost
+    cmds:
+      - bash scripts/services.sh vllm-status
+
   test:cluster:
-    desc: The golden path (stub) or real output (ollama), and one request across logs, traces and metrics, on the cluster (after svc:up, edge:up, obs:up)
+    desc: The golden path (stub) or real output (ollama, vllm), and one request across logs, traces and metrics, on the cluster (after svc:up, edge:up, obs:up)
     dir: test/integration
     cmds:
       - NEUROMESH_BACKEND="$(bash ../../scripts/services.sh backend)" GRAFANA_PASSWORD="$(kubectl --context gpu-lab -n observability get secret vm-grafana -o jsonpath='{.data.admin-password}' | base64 -d)" go test -tags cluster -run Cluster -count=1 -timeout 10m .
