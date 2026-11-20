@@ -39,6 +39,11 @@ spec:
             {{- if eq .Values.backend.kind "vllm" }}
             - { name: VLLM_BASE_URL, value: {{ .Values.backend.vllmURL | quote }} }
             {{- end }}
+            {{- if .Values.batching.enabled }}
+            - { name: BATCHING_ENABLED, value: "true" }
+            - { name: BATCHING_MAX_IN_FLIGHT, value: {{ .Values.batching.maxInFlight | quote }} }
+            - { name: BATCHING_MAX_QUEUE, value: {{ .Values.batching.maxQueue | quote }} }
+            {{- end }}
           ports:
             - { name: grpc, containerPort: 50051 }
             - { name: health, containerPort: 8081 }

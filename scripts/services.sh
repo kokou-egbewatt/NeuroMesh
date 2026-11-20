@@ -16,6 +16,9 @@ CERTS=certs/dev
 DOMAIN=neuromesh.localhost
 # The runtime's backend: stub, ollama once `task ollama:up` has run (#1), or vllm after `task vllm:up` (#105).
 BACKEND="${BACKEND:-stub}"
+# The runtime's cap on its backend (#2): set MAX_IN_FLIGHT to turn it on; MAX_QUEUE defaults to 0.
+MAX_IN_FLIGHT="${MAX_IN_FLIGHT:-}"
+MAX_QUEUE="${MAX_QUEUE:-0}"
 
 die() { echo "error: $*" >&2; exit 1; }
 k() { kubectl --context "$CONTEXT" "$@"; }
@@ -64,8 +67,10 @@ up() {
   k -n "$NS" create configmap neuromesh-ca --from-file=ca.crt="$CERTS/ca.crt" \
     --dry-run=client -o yaml | k apply -f - >/dev/null
 
-  echo "runtime (backend $BACKEND), then gateway"
-  h upgrade --install runtime infra/helm/runtime -n "$NS" --set image.tag="$t" --set backend.kind="$BACKEND" --wait --timeout 3m | grep -E "^STATUS"
+  local batching=(--set batching.enabled=false)
+  [ -z "$MAX_IN_FLIGHT" ] || batching=(--set batching.enabled=true --set batching.maxInFlight="$MAX_IN_FLIGHT" --set batching.maxQueue="$MAX_QUEUE")
+  echo "runtime (backend $BACKEND${MAX_IN_FLIGHT:+, cap $MAX_IN_FLIGHT in flight and $MAX_QUEUE queued}), then gateway"
+  h upgrade --install runtime infra/helm/runtime -n "$NS" --set image.tag="$t" --set backend.kind="$BACKEND" "${batching[@]}" --wait --timeout 3m | grep -E "^STATUS"
   h upgrade --install gateway infra/helm/gateway -n "$NS" --set image.tag="$t" --wait --timeout 3m | grep -E "^STATUS"
   status
 }

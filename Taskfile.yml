@@ -161,7 +161,7 @@ tasks:
       - bash scripts/services.sh image gateway
 
   svc:up:
-    desc: Build, import and deploy runtime (2 replicas) and gateway to the local cluster (BACKEND=ollama after ollama:up, BACKEND=vllm after vllm:up)
+    desc: Build, import and deploy runtime (2 replicas) and gateway to the local cluster (BACKEND=ollama after ollama:up, BACKEND=vllm after vllm:up; MAX_IN_FLIGHT and MAX_QUEUE cap the backend)
     cmds:
       - bash scripts/services.sh up
 
