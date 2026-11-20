@@ -74,6 +74,15 @@ func (m *Metrics) Observe(rpc, code string, d time.Duration, failed bool) {
 	}
 }
 
+// Register adds a service's own collectors, such as the runtime's backend cap (#2). Does nothing when
+// metrics are off.
+func (m *Metrics) Register(cs ...prometheus.Collector) {
+	if m == nil {
+		return
+	}
+	m.reg.MustRegister(cs...)
+}
+
 // Handler serves the registry in Prometheus text format.
 func (m *Metrics) Handler() http.Handler {
 	return promhttp.HandlerFor(m.reg, promhttp.HandlerOpts{Registry: m.reg})

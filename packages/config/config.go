@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -42,6 +43,15 @@ func Load(path string, dst any) (found bool, err error) {
 // StringEnv returns the environment variable named key, or fallback if unset or empty.
 func StringEnv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// IntEnv returns the environment variable named key as an int, or fallback if it is unset, empty or
+// not an integer.
+func IntEnv(key string, fallback int) int {
+	if v, err := strconv.Atoi(strings.TrimSpace(os.Getenv(key))); err == nil {
 		return v
 	}
 	return fallback

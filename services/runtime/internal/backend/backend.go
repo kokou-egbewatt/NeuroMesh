@@ -47,6 +47,8 @@ var (
 	ErrModelNotFound = errors.New("model not found")
 	// ErrInvalid: the backend rejected the request itself.
 	ErrInvalid = errors.New("invalid request")
+	// ErrSaturated: the runtime's cap on the backend is full, queue included (#2).
+	ErrSaturated = errors.New("backend saturated")
 )
 
 // Kinds a runtime config may name.

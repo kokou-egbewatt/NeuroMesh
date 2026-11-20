@@ -22,6 +22,7 @@ func TestStatusMapsBackendErrors(t *testing.T) {
 		{fmt.Errorf("ollama at http://x: %w: refused", backend.ErrUnavailable), codes.Unavailable},
 		{fmt.Errorf("ollama: %w: nope", backend.ErrModelNotFound), codes.NotFound},
 		{fmt.Errorf("ollama: %w", backend.ErrInvalid), codes.InvalidArgument},
+		{fmt.Errorf("vllm: 8 in flight, 0 queued: %w", backend.ErrSaturated), codes.ResourceExhausted},
 		{context.DeadlineExceeded, codes.DeadlineExceeded},
 		{context.Canceled, codes.Canceled},
 		{errors.New("ollama: 500"), codes.Internal},

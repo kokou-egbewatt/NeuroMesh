@@ -71,6 +71,8 @@ func Status(err error) error {
 		code = codes.NotFound
 	case errors.Is(err, backend.ErrInvalid):
 		code = codes.InvalidArgument
+	case errors.Is(err, backend.ErrSaturated):
+		code = codes.ResourceExhausted
 	case errors.Is(err, context.DeadlineExceeded):
 		code = codes.DeadlineExceeded
 	case errors.Is(err, context.Canceled):

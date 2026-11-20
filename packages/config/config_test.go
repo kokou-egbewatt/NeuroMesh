@@ -66,3 +66,15 @@ func TestStringEnv(t *testing.T) {
 		t.Fatalf("set env: got %q", got)
 	}
 }
+
+func TestIntEnv(t *testing.T) {
+	for _, tc := range []struct {
+		env  string
+		want int
+	}{{"", 7}, {"120", 120}, {" 0 ", 0}, {"-3", -3}, {"many", 7}, {"1.5", 7}} {
+		t.Setenv("NM_TEST_INT", tc.env)
+		if got := IntEnv("NM_TEST_INT", 7); got != tc.want {
+			t.Errorf("IntEnv(%q) = %d, want %d", tc.env, got, tc.want)
+		}
+	}
+}

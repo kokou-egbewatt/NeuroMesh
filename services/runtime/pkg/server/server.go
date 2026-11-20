@@ -30,6 +30,7 @@ import (
 	"github.com/kokou-egbewatt/NeuroMesh/packages/telemetry"
 	"github.com/kokou-egbewatt/NeuroMesh/packages/tracing"
 	neuromeshv1 "github.com/kokou-egbewatt/NeuroMesh/sdk/go/gen/neuromesh/v1"
+	"github.com/kokou-egbewatt/NeuroMesh/services/runtime/internal/admit"
 	"github.com/kokou-egbewatt/NeuroMesh/services/runtime/internal/backend"
 	"github.com/kokou-egbewatt/NeuroMesh/services/runtime/internal/service"
 )
@@ -57,6 +58,19 @@ type Config struct {
 	Metrics telemetry.Config `yaml:"metrics"`
 	// Backend is what generates the text (#1).
 	Backend BackendConfig `yaml:"backend"`
+	// Batching caps the requests in flight on the backend (#2).
+	Batching BatchingConfig `yaml:"batching"`
+}
+
+// BatchingConfig caps the backend. The backend batches what is in flight on the GPU itself; the
+// cap keeps that below the size of its KV cache, where it would start preempting. Off by default.
+type BatchingConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// MaxInFlight is the most requests on the backend at once; for vLLM, about its KV cache tokens
+	// over prompt plus max_tokens.
+	MaxInFlight int `yaml:"max_in_flight"`
+	// MaxQueue is how many more may wait for a slot; past it a request gets ResourceExhausted at once.
+	MaxQueue int `yaml:"max_queue"`
 }
 
 // BackendConfig picks the backend. The stub is the default, so the tests and the #13 baseline run
@@ -150,6 +164,16 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 	}
 	if b.Name() != backend.KindStub {
 		log.Info("backend selected", "backend", b.Name(), "backend_url", cfg.Backend.url())
+	}
+	if cfg.Batching.Enabled {
+		ac := admit.Config{MaxInFlight: cfg.Batching.MaxInFlight, MaxQueue: cfg.Batching.MaxQueue}
+		if err := ac.Validate(); err != nil {
+			return nil, err
+		}
+		capped := admit.New(b, ac)
+		m.Register(capped.Collectors()...)
+		b = capped
+		log.Info("batching on", "max_in_flight", ac.MaxInFlight, "max_queue", ac.MaxQueue)
 	}
 	neuromeshv1.RegisterInferenceServiceServer(g, service.New(b))
 	h := health.NewServer()

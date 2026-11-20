@@ -51,6 +51,9 @@ func run() error {
 	cfg.Backend.Kind = config.StringEnv("BACKEND_KIND", cfg.Backend.Kind)
 	cfg.Backend.Ollama.BaseURL = config.StringEnv("OLLAMA_BASE_URL", cfg.Backend.Ollama.BaseURL)
 	cfg.Backend.VLLM.BaseURL = config.StringEnv("VLLM_BASE_URL", cfg.Backend.VLLM.BaseURL)
+	cfg.Batching.Enabled = config.BoolEnv("BATCHING_ENABLED", cfg.Batching.Enabled)
+	cfg.Batching.MaxInFlight = config.IntEnv("BATCHING_MAX_IN_FLIGHT", cfg.Batching.MaxInFlight)
+	cfg.Batching.MaxQueue = config.IntEnv("BATCHING_MAX_QUEUE", cfg.Batching.MaxQueue)
 
 	log, err := logging.New(os.Stdout, "runtime", cfg.LogLevel, cfg.LogFormat)
 	if err != nil {
