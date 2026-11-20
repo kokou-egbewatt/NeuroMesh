@@ -1,5 +1,5 @@
 // Package backend is what the runtime's InferenceService calls to generate text (#1): the stub, which
-// answers with a fixed string, and Ollama. Adapters return the sentinel errors below; the service
+// answers with a fixed string, Ollama, and vLLM (#105). Adapters return the sentinel errors below; the service
 // maps them to gRPC codes, so every adapter shares one mapping.
 package backend
 
@@ -53,15 +53,25 @@ var (
 const (
 	KindStub   = "stub"
 	KindOllama = "ollama"
+	KindVLLM   = "vllm"
 )
 
-// New builds the backend kind names. An empty kind is the stub.
-func New(kind string, ollama OllamaConfig) (Backend, error) {
-	switch kind {
+// Config picks a backend and holds each HTTP backend's server; only the chosen one is read.
+type Config struct {
+	Kind   string
+	Ollama HTTPConfig
+	VLLM   HTTPConfig
+}
+
+// New builds the backend cfg.Kind names. An empty kind is the stub.
+func New(cfg Config) (Backend, error) {
+	switch cfg.Kind {
 	case "", KindStub:
 		return Stub{}, nil
 	case KindOllama:
-		return NewOllama(ollama)
+		return NewOllama(cfg.Ollama)
+	case KindVLLM:
+		return NewVLLM(cfg.VLLM)
 	}
-	return nil, fmt.Errorf("backend.kind %q: want %s or %s", kind, KindStub, KindOllama)
+	return nil, fmt.Errorf("backend.kind %q: want %s, %s or %s", cfg.Kind, KindStub, KindOllama, KindVLLM)
 }

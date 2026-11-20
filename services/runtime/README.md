@@ -6,7 +6,7 @@ Serves `InferenceService` (`proto/neuromesh/v1/runtime.proto`) over a backend, p
 
 ## Backends
 
-`internal/backend` holds the `Backend` interface and its implementations; `internal/service` serves `InferenceService` over one and maps its errors to gRPC codes, once for every adapter (#1).
+`internal/backend` holds the `Backend` interface and its implementations; `internal/service` serves `InferenceService` over one and maps its errors to gRPC codes, once for every adapter (#1). The HTTP adapters share one client and one status mapping (`http.go`).
 
 ```mermaid
 flowchart LR
@@ -15,21 +15,23 @@ flowchart LR
     service --> iface{{"Backend<br/>Complete, Stream"}}
     iface --> stub["stub"]
     iface --> ollama["Ollama adapter"] -->|"/api/generate"| ext["Ollama"]
-    iface -.-> later["vLLM, Triton, SGLang<br/>later"]
+    iface --> vllm["vLLM adapter"] -->|"/v1/chat/completions"| ext2["vLLM"]
+    iface -.-> later["Triton, SGLang<br/>later"]
 ```
 
 - **`stub`** (the default) answers `stub response for model <model>`. The golden files, the existing tests and the #13 baseline use it, so they need no model server.
 - **`ollama`** calls Ollama's `/api/generate`, streaming for `StreamInference`. Model names are Ollama tags, passed as they are. `temperature`, `max_tokens` and `stop` become Ollama's `temperature`, `num_predict` and `stop`; zero means Ollama's default.
+- **`vllm`** (#105) calls vLLM's OpenAI-compatible `/v1/chat/completions` with the prompt as one user message, so an instruct model gets its chat template as it does through Ollama. Streaming reads the server-sent events and asks for `include_usage`. Model names are vLLM's served names (the Hugging Face repo id in the chart). `temperature`, `max_tokens` and `stop` pass as they are; zero is left out, so vLLM uses the model's defaults.
 
 | Backend says | gRPC code |
 | --- | --- |
 | unreachable, 502, 503, or the answer cut off | `Unavailable`, within `dial_timeout` when nothing listens |
-| 404 (model not pulled) | `NotFound` |
-| 400 | `InvalidArgument` |
+| 404 (model not pulled or not served) | `NotFound` |
+| 400 (including a prompt past vLLM's `max_model_len`) | `InvalidArgument` |
 | the caller's deadline or cancellation | `DeadlineExceeded`, `Canceled` |
 | anything else | `Internal` |
 
-The runtime boots and reports SERVING whether or not Ollama is up; each request says `Unavailable` until it is. There is no fallback to the stub. On the cluster, `task ollama:up` installs Ollama and `BACKEND=ollama task svc:up` points the runtime at it.
+The runtime boots and reports SERVING whether or not its backend is up; each request says `Unavailable` until it is. There is no fallback to the stub. On the cluster, `task ollama:up` or `task vllm:up` installs one, and `BACKEND=ollama` or `BACKEND=vllm task svc:up` points the runtime at it.
 
 ## Transport
 
@@ -56,10 +58,11 @@ task run         # go run ./cmd/server (or `task dev` from the root for both, wi
 | `reflection` | `false` | gRPC reflection, for debugging only |
 | `tls.cert_file`, `tls.key_file`, `tls.ca_file` | | Server certificate and the CA client certificates must chain to |
 | `tls.allowed_client_names` | | Common names allowed to call |
-| `backend.kind` | `stub` | `stub` or `ollama`; anything else fails startup. `BACKEND_KIND` overrides it |
+| `backend.kind` | `stub` | `stub`, `ollama` or `vllm`; anything else fails startup. `BACKEND_KIND` overrides it |
 | `backend.ollama.base_url` | | Ollama's address, e.g. `http://ollama:11434`. `OLLAMA_BASE_URL` overrides it |
 | `backend.ollama.dial_timeout` | `3s` | Connecting; an unreachable Ollama is `Unavailable` within it |
 | `backend.ollama.response_header_timeout` | `60s` | The wait for an answer to start. A unary answer starts only when it is complete, so this bounds model load plus generation |
+| `backend.vllm.base_url`, `dial_timeout`, `response_header_timeout` | | The same for vLLM, e.g. `http://vllm:8000`. `VLLM_BASE_URL` overrides the address |
 
 ## Image
 

@@ -16,7 +16,7 @@ import (
 )
 
 func TestUnknownBackendKindFailsAtStartup(t *testing.T) {
-	_, err := New(Config{TLS: config.TLS{Insecure: true}, Backend: BackendConfig{Kind: "vllm"}}, quiet)
+	_, err := New(Config{TLS: config.TLS{Insecure: true}, Backend: BackendConfig{Kind: "triton"}}, quiet)
 	if err == nil || !strings.Contains(err.Error(), "vllm") {
 		t.Fatalf("got %v, want an error naming the kind", err)
 	}
@@ -32,7 +32,7 @@ func TestOllamaDownBootsAndRouteIsUnavailable(t *testing.T) {
 	gone := l.Addr().String()
 	_ = l.Close()
 	addr, _ := start(t, Config{TLS: config.TLS{Insecure: true}, Backend: BackendConfig{
-		Kind: "ollama", Ollama: OllamaConfig{BaseURL: "http://" + gone, DialTimeout: time.Second},
+		Kind: "ollama", Ollama: HTTPBackend{BaseURL: "http://" + gone, DialTimeout: time.Second},
 	}})
 	conn := dial(t, addr, insecure.NewCredentials())
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

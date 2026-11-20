@@ -36,6 +36,9 @@ spec:
             {{- if eq .Values.backend.kind "ollama" }}
             - { name: OLLAMA_BASE_URL, value: {{ .Values.backend.ollamaURL | quote }} }
             {{- end }}
+            {{- if eq .Values.backend.kind "vllm" }}
+            - { name: VLLM_BASE_URL, value: {{ .Values.backend.vllmURL | quote }} }
+            {{- end }}
           ports:
             - { name: grpc, containerPort: 50051 }
             - { name: health, containerPort: 8081 }

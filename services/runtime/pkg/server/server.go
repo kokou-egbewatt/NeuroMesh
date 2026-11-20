@@ -62,19 +62,32 @@ type Config struct {
 // BackendConfig picks the backend. The stub is the default, so the tests and the #13 baseline run
 // without a model server.
 type BackendConfig struct {
-	// Kind is stub or ollama; anything else fails at startup.
-	Kind   string       `yaml:"kind"`
-	Ollama OllamaConfig `yaml:"ollama"`
+	// Kind is stub, ollama or vllm; anything else fails at startup.
+	Kind   string      `yaml:"kind"`
+	Ollama HTTPBackend `yaml:"ollama"`
+	VLLM   HTTPBackend `yaml:"vllm"`
 }
 
-// OllamaConfig is backend.kind ollama's server.
-type OllamaConfig struct {
+// HTTPBackend is the server of an HTTP backend kind.
+type HTTPBackend struct {
 	BaseURL string `yaml:"base_url"`
 	// DialTimeout bounds connecting (default 3s): an unreachable server is Unavailable within it.
 	DialTimeout time.Duration `yaml:"dial_timeout"`
 	// ResponseHeaderTimeout caps the wait for an answer to start (default 60s). A unary generation
 	// starts answering only when it is finished, so this bounds model load plus generation.
 	ResponseHeaderTimeout time.Duration `yaml:"response_header_timeout"`
+}
+
+func (h HTTPBackend) http() backend.HTTPConfig {
+	return backend.HTTPConfig{BaseURL: h.BaseURL, DialTimeout: h.DialTimeout, ResponseHeaderTimeout: h.ResponseHeaderTimeout}
+}
+
+// url is the chosen backend's server, for the startup log.
+func (b BackendConfig) url() string {
+	if b.Kind == backend.KindVLLM {
+		return b.VLLM.BaseURL
+	}
+	return b.Ollama.BaseURL
 }
 
 // Defaults fills unset fields.
@@ -131,16 +144,12 @@ func New(cfg Config, log *slog.Logger) (*Server, error) {
 		grpc.ChainUnaryInterceptor(unaryLogger(log, m)),
 		grpc.ChainStreamInterceptor(streamLogger(log, m)),
 	)
-	b, err := backend.New(cfg.Backend.Kind, backend.OllamaConfig{
-		BaseURL:               cfg.Backend.Ollama.BaseURL,
-		DialTimeout:           cfg.Backend.Ollama.DialTimeout,
-		ResponseHeaderTimeout: cfg.Backend.Ollama.ResponseHeaderTimeout,
-	})
+	b, err := backend.New(backend.Config{Kind: cfg.Backend.Kind, Ollama: cfg.Backend.Ollama.http(), VLLM: cfg.Backend.VLLM.http()})
 	if err != nil {
 		return nil, err
 	}
 	if b.Name() != backend.KindStub {
-		log.Info("backend selected", "backend", b.Name(), "backend_url", cfg.Backend.Ollama.BaseURL)
+		log.Info("backend selected", "backend", b.Name(), "backend_url", cfg.Backend.url())
 	}
 	neuromeshv1.RegisterInferenceServiceServer(g, service.New(b))
 	h := health.NewServer()

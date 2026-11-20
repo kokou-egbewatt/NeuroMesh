@@ -1,0 +1,56 @@
+# vLLM for backend.kind vllm (#105). `task vllm:up` installs it in the neuromesh namespace and
+# `BACKEND=vllm task svc:up` points the runtime at it.
+#
+# The tag is a GPU decision: the RTX 5060 is sm_120, which needs a CUDA 12.8+ build. v0.12.0 ships a
+# CUDA 12.9 build; v0.9 and earlier fail at the first kernel with "no kernel image is available for
+# execution on the device". Flags also change between minor versions, so check `--help` on a new tag.
+image: vllm/vllm-openai:v0.12.0
+
+# A Hugging Face repo, downloaded by an init container into the PVC; the server then runs offline.
+# The served model name is the repo id, so requests name it as it is. 0.5B is about 1 GB in bf16.
+model: Qwen/Qwen2.5-0.5B-Instruct
+
+engine:
+  # vLLM takes this share of the card's TOTAL memory at start, for weights, activations and KV cache,
+  # and refuses to start if less than that is free. The desktop holds 1.4 to 2.3 GB of the 8 GB with
+  # no game running (infinity-bench vram-accounting), so 0.5 (about 4 GB) leaves it room.
+  gpuMemoryUtilization: 0.5
+  # The longest prompt plus answer, in tokens. Past it a request is a 400, which the runtime reports
+  # as InvalidArgument.
+  maxModelLen: 4096
+  # No CUDA graphs: a smaller, faster start on a node where host memory is shared with the desktop,
+  # for some decode speed. The benchmark sets it false.
+  enforceEager: true
+  # Appended to the server's flags as they are.
+  extraArgs: []
+
+# Where triton finds an unversioned libcuda.so. vLLM's sampler compiles small kernels at request time
+# and links with -lcuda; the NVIDIA runtime injects only libcuda.so.1, and under WSL the unversioned
+# file is only in the image's CUDA compat directory. Without this the first real request kills the
+# engine while /health stays green. The path names the image's CUDA version: check it on a new tag.
+tritonLibcudaPath: /usr/local/cuda-12.9/compat
+
+# On the GPU through the nvidia RuntimeClass, holding the one nvidia.com/gpu the node advertises, so
+# Ollama and vLLM can't run together (`task ollama:down` or `task vllm:down` frees it).
+gpu:
+  enabled: true
+
+storage:
+  # The model and every cache the engine writes.
+  size: 10Gi
+  storageClass: ""
+
+# vLLM passes tensors between its processes through /dev/shm; the container default of 64 MiB hangs
+# it. Memory-backed, so what it uses counts against the memory limit.
+shmSize: 1Gi
+
+resources:
+  requests: { cpu: 500m, memory: 2Gi }
+  limits: { memory: 8Gi }
+
+# https://vllm.<domain> through the local edge, plain HTTP behind it, for the streaming cluster test
+# and clients on Windows.
+edge:
+  enabled: true
+  domain: neuromesh.localhost
+  gateway: { name: neuromesh-edge, namespace: edge }

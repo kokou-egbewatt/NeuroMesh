@@ -50,6 +50,7 @@ func run() error {
 	cfg.Metrics.Addr = config.StringEnv("METRICS_ADDR", cfg.Metrics.Addr)
 	cfg.Backend.Kind = config.StringEnv("BACKEND_KIND", cfg.Backend.Kind)
 	cfg.Backend.Ollama.BaseURL = config.StringEnv("OLLAMA_BASE_URL", cfg.Backend.Ollama.BaseURL)
+	cfg.Backend.VLLM.BaseURL = config.StringEnv("VLLM_BASE_URL", cfg.Backend.VLLM.BaseURL)
 
 	log, err := logging.New(os.Stdout, "runtime", cfg.LogLevel, cfg.LogFormat)
 	if err != nil {

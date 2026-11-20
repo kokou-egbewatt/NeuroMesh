@@ -1,0 +1,6 @@
+apiVersion: v2
+name: vllm
+description: vLLM on the local cluster (#105) - the runtime's second backend, OpenAI-compatible, on the GPU through the nvidia RuntimeClass, the model downloaded into a PVC before it serves.
+type: application
+version: 0.1.0
+appVersion: v0.12.0
