@@ -40,3 +40,15 @@ backend:
   kind: stub
   ollamaURL: http://ollama:11434
   vllmURL: http://vllm:8000
+
+# Caps the requests in flight on the backend, with a bounded queue in front (#2). Past the cap and the
+# queue a request gets 429 backend_saturated at once. The backend batches what is in flight on the GPU
+# itself; for vLLM the cap is about its KV cache tokens (the "GPU KV cache size" startup line) over
+# prompt plus max_tokens. The cap is per replica: replicas sharing one backend split its capacity. Size
+# the queue from the gateway's upstream_timeout: a queued request waits about (maxQueue / maxInFlight)
+# answers, and that plus its own answer has to fit.
+# `MAX_IN_FLIGHT=<n> [MAX_QUEUE=<n>] task svc:up` turns it on.
+batching:
+  enabled: false
+  maxInFlight: 0
+  maxQueue: 0

@@ -164,6 +164,7 @@ task vllm:up                    # vLLM on the GPU; an init container downloads Q
 BACKEND=vllm task svc:up        # the runtime on backend.kind vllm, at http://vllm:8000
 task vllm:status                # the pod, the runtime's backend, and https://vllm.neuromesh.localhost/v1/models
 task test:cluster               # on vLLM: real output, 404 and 400, streaming, scaled to zero
+MAX_IN_FLIGHT=128 MAX_QUEUE=16 BACKEND=vllm task svc:up   # the runtime caps what it sends vLLM (#2)
 task vllm:down                  # frees the GPU; the PVC keeps the model and compiled kernels
 ```
 
@@ -176,6 +177,7 @@ task vllm:down                  # frees the GPU; the PVC keeps the model and com
 - **No service links.** The Service is named `vllm`, so Kubernetes would inject `VLLM_PORT=tcp://<ip>:8000` into the pod. vLLM reads that as its own port setting and exits at start. The chart sets `enableServiceLinks: false`.
 - **A game on the GPU hangs generation.** With a game holding the card (221 MiB free), vLLM started and passed `/health`, then the first request ran at 0 tok/s with the engine spinning one CPU core, and stayed that way after the game closed. Close the game, then `kubectl -n neuromesh rollout restart deploy/vllm`.
 - **What it costs here,** Qwen2.5-0.5B at 0.5: 0.93 GiB of weights and 1.63 GiB of KV cache (142,032 tokens). The first start after the download takes about a minute to load and 8.8 s to set up the engine; a restart with warm caches takes 0.8 s and 2.3 s. The first request after a fresh start compiles kernels for tens of seconds; after that a short answer takes about 0.4 s end to end through the edge.
+- **Past its KV cache it slows everyone down.** vLLM batches every request in flight, but once the cache is full it preempts and queues without limit: at 256 concurrent requests half of them ran out the gateway's 30 s deadline. The runtime's cap (`MAX_IN_FLIGHT`, #2) keeps it below that point, and a short queue (`MAX_QUEUE`) turns the excess into a 429 at once. Sizing and numbers are in the [runtime README](../../services/runtime/README.md#batching) and the [batching benchmark](../../benchmarks/inference/batching/README.md).
 
 ## When something is wrong
 

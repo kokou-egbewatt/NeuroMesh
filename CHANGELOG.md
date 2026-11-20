@@ -9,6 +9,32 @@ enforces it and `task ci:changelog` checks the file's structure.
 
 ## [Unreleased]
 
+## [0.12.0] - Backend Cap (2026-11-20)
+
+**Batching in the runtime as a cap on the requests in flight on the backend, with a bounded queue in
+front. vLLM batches on the GPU itself; the cap keeps it below the size of its KV cache, where it would
+start preempting. Off by default. Closes #2.**
+
+### Added
+
+- **`internal/admit`:** the cap and a first-in, first-out queue around any `Backend`. A full queue
+  answers `ResourceExhausted` at once (429 `backend_saturated` at the gateway); a queued request that
+  is cancelled or runs out of deadline leaves without a slot; a stream holds its slot to the end.
+  Below the cap it adds about 70 ns.
+- **Config:** `batching.enabled`, `max_in_flight` and `max_queue`, with `BATCHING_*` overrides, and
+  `MAX_IN_FLIGHT=<n> MAX_QUEUE=<n> task svc:up` on the cluster.
+- **Metrics:** requests in flight and queued, the cap, queue wait and rejections, labelled by backend.
+- **`benchmarks/inference/batching`:** a sweep straight at vLLM and a load run through the gateway,
+  as Jobs in the cluster, with the 2026-11-20 results. Past its KV cache vLLM preempted and half the
+  requests at 256 concurrent ran out the gateway's deadline; with the cap at 128 and a queue of 16,
+  none did, at 96% of the throughput of the uncapped 128 run.
+- **`config.IntEnv`** and **`telemetry.Metrics.Register`** for the above.
+
+### Changed
+
+- **Docs:** the runtime README (batching, sizing the cap and the queue, config, errors), the local
+  cluster guide, the request path and the overview.
+
 ## [0.11.0] - vLLM Backend (2026-11-17)
 
 **vLLM as the runtime's second real backend, on the GPU in the local cluster, behind the same
