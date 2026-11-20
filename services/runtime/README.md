@@ -12,7 +12,8 @@ Serves `InferenceService` (`proto/neuromesh/v1/runtime.proto`) over a backend, p
 flowchart LR
     caller["gateway<br/>mutual TLS"] --> server["pkg/server<br/>TLS, health, metrics, tracing"]
     server --> service["internal/service<br/>Route, StreamInference,<br/>errors to gRPC codes"]
-    service --> iface{{"Backend<br/>Complete, Stream"}}
+    service --> admit["internal/admit<br/>cap in flight, bounded queue<br/>(batching, off by default)"]
+    admit --> iface{{"Backend<br/>Complete, Stream"}}
     iface --> stub["stub"]
     iface --> ollama["Ollama adapter"] -->|"/api/generate"| ext["Ollama"]
     iface --> vllm["vLLM adapter"] -->|"/v1/chat/completions"| ext2["vLLM"]
@@ -28,10 +29,21 @@ flowchart LR
 | unreachable, 502, 503, or the answer cut off | `Unavailable`, within `dial_timeout` when nothing listens |
 | 404 (model not pulled or not served) | `NotFound` |
 | 400 (including a prompt past vLLM's `max_model_len`) | `InvalidArgument` |
+| the runtime's cap and its queue are full (batching on) | `ResourceExhausted`, at once, without calling the backend |
 | the caller's deadline or cancellation | `DeadlineExceeded`, `Canceled` |
 | anything else | `Internal` |
 
 The runtime boots and reports SERVING whether or not its backend is up; each request says `Unavailable` until it is. There is no fallback to the stub. On the cluster, `task ollama:up` or `task vllm:up` installs one, and `BACKEND=ollama` or `BACKEND=vllm task svc:up` points the runtime at it.
+
+## Batching
+
+The backend batches on the GPU itself: vLLM runs every request in flight as one batch, and Ollama has parallel slots. What it does not do is stop taking work when its KV cache is full; past that, vLLM preempts and queues without limit, so throughput stays flat while every request slows down ([measured](../../benchmarks/inference/batching/README.md)). With `batching.enabled`, `internal/admit` caps the requests in flight on the backend and holds a bounded queue in front (#2):
+
+- **The cap** is about the KV cache's tokens (vLLM's "GPU KV cache size" startup line) over prompt plus `max_tokens`. It counts per runtime replica, so replicas sharing one backend split it.
+- **The queue** is first in, first out. A queued request that is cancelled or runs out of deadline leaves without taking a slot. A full queue answers `ResourceExhausted` at once, which the gateway returns as 429 `backend_saturated`.
+- **Size the queue from the deadline:** a queued request waits about (queue / cap) answers, and that plus its own answer has to fit in the gateway's `upstream_timeout`.
+- **A stream holds its slot** until its last chunk. Below the cap a request is not held: the cap adds about 70 ns.
+- **Metrics:** `neuromesh_backend_in_flight`, `_queued`, `_max_in_flight`, `_queue_wait_seconds` and `_rejected_total`, labelled by backend.
 
 ## Transport
 
@@ -63,6 +75,9 @@ task run         # go run ./cmd/server (or `task dev` from the root for both, wi
 | `backend.ollama.dial_timeout` | `3s` | Connecting; an unreachable Ollama is `Unavailable` within it |
 | `backend.ollama.response_header_timeout` | `60s` | The wait for an answer to start. A unary answer starts only when it is complete, so this bounds model load plus generation |
 | `backend.vllm.base_url`, `dial_timeout`, `response_header_timeout` | | The same for vLLM, e.g. `http://vllm:8000`. `VLLM_BASE_URL` overrides the address |
+| `batching.enabled` | `false` | Cap the requests in flight on the backend. `BATCHING_ENABLED` overrides it |
+| `batching.max_in_flight` | | At least 1 when enabled. `BATCHING_MAX_IN_FLIGHT` overrides it |
+| `batching.max_queue` | `0` | Requests that may wait for a slot; 0 rejects whatever finds the cap full. `BATCHING_MAX_QUEUE` overrides it |
 
 ## Image
 

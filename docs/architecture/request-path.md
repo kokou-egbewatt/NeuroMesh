@@ -109,4 +109,4 @@ flowchart LR
     o4 --> g4 --> h4
 ```
 
-A deadline past the gateway's `upstream_timeout` is 504, and `ResourceExhausted` (a message over `max_recv_msg_bytes`) is 429.
+A deadline past the gateway's `upstream_timeout` is 504, and `ResourceExhausted` (a message over `max_recv_msg_bytes`, or the runtime's cap and queue full, #2) is 429 `backend_saturated`.
