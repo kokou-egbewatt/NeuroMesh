@@ -17,3 +17,4 @@ The layout:
 - `scenarios.go` defines what one request is (`route`, `stream`), and `report.go` defines the
   matrix, the table and the drift comparison.
 - `cmd/bench` boots the stack through `test/integration/harness` and runs the matrix.
+- `batching/` measures vLLM past its KV cache and the runtime's cap on it (#2), on the local GPU.
